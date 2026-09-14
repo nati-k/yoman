@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>יומן פיקוח גנים - מלווה מקצועי</title>
+    <style>
+        :root { --primary: #047857; --primary-dark: #065f46; --bg: #f8fafc; --text: #1e293b; --danger: #e11d48; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+        body { background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 40px; }
+        header { background: linear-gradient(135deg, #047857, #0f766e); color: white; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 50; }
+        .header-content { max-width: 800px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+        h1 { font-size: 1.25rem; font-weight: 700; }
+        .subtitle { font-size: 0.75rem; opacity: 0.9; }
+        main { max-width: 800px; margin: 20px auto; padding: 0 16px; }
+        .card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; margin-bottom: 20px; }
+        .label { font-size: 0.85rem; font-weight: 700; color: #475569; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+        textarea { width: 100%; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; font-size: 0.95rem; resize: none; background: #f8fafc; outline: none; }
+        textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(4,120,87,0.1); }
+        .row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+        input[type="date"] { border: 1px solid #cbd5e1; border-radius: 10px; padding: 8px 12px; font-size: 0.9rem; background: #f8fafc; outline: none; }
+        .btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.9rem; transition: background 0.2s; }
+        .btn:hover { background: var(--primary-dark); }
+        .btn-secondary { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 10px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+        .btn-secondary:hover { background: #e2e8f0; }
+        .btn-mic { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 10px 14px; border-radius: 12px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; gap: 6px; font-weight: 600; transition: all 0.2s; }
+        .btn-mic.recording { background: var(--danger); color: white; border-color: var(--danger); animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        .tabs-container { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 8px; scrollbar-width: none; }
+        .tab-btn { background: white; border: 1px solid #e2e8f0; padding: 10px 16px; border-radius: 12px; font-size: 0.9rem; font-weight: 600; cursor: pointer; white-space: nowrap; color: #475569; display: flex; align-items: center; gap: 6px; }
+        .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 2px 4px rgba(4,120,87,0.2); }
+        .entry-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin-bottom: 12px; position: relative; }
+        .entry-header { display: flex; justify-content: space-between; font-size: 0.75rem; color: #64748b; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+        .badge { background: #d1fae5; color: #065f46; padding: 3px 8px; border-radius: 6px; font-weight: 600; }
+        .status-msg { font-size: 0.8rem; color: #059669; font-weight: 600; margin-top: 8px; display: none; }
+        .delete-btn { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 0.8rem; padding: 2px 6px; border-radius: 4px; }
+        .delete-btn:hover { color: var(--danger); background: #fee2e2; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div>
+                <h1>יומן פיקוח גנים</h1>
+                <div class="subtitle">מערכת מקצועית עצמאית מותאמת למובייל</div>
+            </div>
+            <div>
+                <button onclick="exportCSV()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); color: white; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">📥 ייצוא לאקסל</button>
+            </div>
+        </div>
+    </header>
+    <main>
+        <div class="card">
+            <div class="label">הוספת עדכון חדש (הקלטה קולית או הקלדה)</div>
+            <div class="row">
+                <div style="font-size: 0.8rem; color: #475569; font-weight: 600;" id="active-label">גן נבחר: גן 1</div>
+                <div>
+                    <label style="font-size: 0.8rem; margin-left: 6px;">תאריך:</label>
+                    <input type="date" id="entry-date">
+                </div>
+            </div>
+            <div style="position: relative; margin-bottom: 12px;">
+                <textarea id="entry-text" rows="3" placeholder="הקלד כאן או לחץ על המיקרופון (למשל: 'גן 3, ביקרנו היום במוקד חצר...')"></textarea>
+                <button id="mic-btn" class="btn-mic" onclick="toggleSpeech()" style="position: absolute; bottom: 12px; left: 12px;" title="הכתבה קולית">🎤 הקלטה</button>
+            </div>
+            <div class="row" style="justify-content: flex-end; margin-bottom: 0;">
+                <div id="status-text" class="status-msg">✓ נשמר בהצלחה במכשיר!</div>
+                <button class="btn" onclick="saveEntry()">שמור עדכון</button>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="font-size: 0.9rem; font-weight: 700; color: #334155;">הגנים שבפיקוח:</div>
+            <div style="display: flex; gap: 6px;">
+                <button onclick="addKindergarten()" class="btn-secondary" style="color: var(--primary); border-color: #a7f3d0; background: #e6f4ea;">+ הוסף גן</button>
+                <button onclick="deleteCurrentKindergarten()" class="btn-secondary" style="color: var(--danger); border-color: #fecdd3; background: #fff1f2;">מחק גן נוכחי</button>
+            </div>
+        </div>
+        <div id="tabs-container" class="tabs-container"></div>
+
+        <div class="card" style="margin-top: 20px;">
+            <div class="row" style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 12px;">
+                <div>
+                    <h2 id="current-title" style="font-size: 1.1rem; font-weight: 700;">גן 1</h2>
+                    <div style="font-size: 0.75rem; color: #64748b;">היסטוריית דיווחים מקומית</div>
+                </div>
+                <div>
+                    <button onclick="renameKindergarten()" class="btn-secondary">שינוי שם</button>
+                </div>
+            </div>
+            <div id="entries-list"></div>
+        </div>
+    </main>
+    <script>
+        let appData = JSON.parse(localStorage.getItem('yoman_ganim_data')) || {
+            kindergartens: ["גן 1", "גן 2", "גן 3", "גן 4", "גן 5", "גן 6"],
+            entries: {}
+        };
+        let activeTab = 0;
+        let recognition = null;
+        let isRecording = false;
+
+        document.getElementById('entry-date').valueAsDate = new Date();
+
+        function saveDataLocal() {
+            localStorage.setItem('yoman_ganim_data', JSON.stringify(appData));
+        }
+
+        function formatHebrewDate(dateStr) {
+            if (!dateStr) return '';
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                const year = parts[0];
+                const monthNum = parseInt(parts[1], 10);
+                const day = parseInt(parts[2], 10);
+                const months = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+                if (monthNum >= 1 && monthNum <= 12) {
+                    return `${day} ב${months[monthNum - 1]} ${year}`;
+                }
+            }
+            return dateStr;
+        }
+
+        function render() {
+            const container = document.getElementById('tabs-container');
+            container.innerHTML = '';
+            
+            if (activeTab >= appData.kindergartens.length) activeTab = 0;
+            const activeName = appData.kindergartens[activeTab];
+
+            appData.kindergartens.forEach((name, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `tab-btn ${idx === activeTab ? 'active' : ''}`;
+                btn.innerText = name;
+                btn.onclick = () => { activeTab = idx; render(); };
+                container.appendChild(btn);
+            });
+
+            document.getElementById('current-title').innerText = activeName;
+            document.getElementById('active-label').innerText = `גן נבחר: ${activeName}`;
+
+            const list = document.getElementById('entries-list');
+            list.innerHTML = '';
+            const entries = (appData.entries[activeName] || []).slice().reverse();
+
+            if (entries.length === 0) {
+                list.innerHTML = `<div style="text-align: center; color: #94a3b8; padding: 30px 0; font-size: 0.85rem;">אין עדכונים רשומים עבור ${activeName} עדיין.</div>`;
+                return;
+            }
+
+            entries.forEach((e, revIndex) => {
+                const originalIndex = appData.entries[activeName].length - 1 - revIndex;
+                const div = document.createElement('div');
+                div.className = 'entry-card';
+                div.innerHTML = `
+                    <div class="entry-header">
+                        <span class="badge">${formatHebrewDate(e.date)} (${e.timestamp || ''})</span>
+                        <button class="delete-btn" onclick="deleteEntry('${activeName}', ${originalIndex})">מחק דיווח</button>
+                    </div>
+                    <div style="font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(e.text)}</div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function detectAndSwitch(text) {
+            const lower = text.toLowerCase();
+            const map = [
+                {names: ['גן 1', 'גן אחת', 'גן ראשון'], idx: 0},
+                {names: ['גן 2', 'גן שתיים', 'גן שניים', 'גן שני'], idx: 1},
+                {names: ['גן 3', 'גן שלוש', 'גן שלש'], idx: 2},
+                {names: ['גן 4', 'גן ארבע'], idx: 3},
+                {names: ['גן 5', 'גן חמש'], idx: 4},
+                {names: ['גן 6', 'גן שש'], idx: 5}
+            ];
+
+            for(let i=0; i<appData.kindergartens.length; i++) {
+                if(lower.includes(appData.kindergartens[i].toLowerCase())) {
+                    activeTab = i;
+                    render();
+                    return;
+                }
+            }
+
+            for(let m of map) {
+                for(let n of m.names) {
+                    if(lower.includes(n) && m.idx < appData.kindergartens.length) {
+                        activeTab = m.idx;
+                        render();
+                        return;
+                    }
+                }
+            }
+        }
+
+        function saveEntry() {
+            const textEl = document.getElementById('entry-text');
+            const dateEl = document.getElementById('entry-date');
+            const text = textEl.value.trim();
+            const date = dateEl.value;
+
+            if(!text) { alert('נא להזין טקסט לעדכון.'); return; }
+            if(!date) { alert('נא לבחור תאריך.'); return; }
+
+            detectAndSwitch(text);
+            const activeName = appData.kindergartens[activeTab];
+
+            if(!appData.entries[activeName]) appData.entries[activeName] = [];
+            const timeStr = new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+            appData.entries[activeName].push({ date: date, text: text, timestamp: timeStr });
+            
+            saveDataLocal();
+
+            const msg = document.getElementById('status-text');
+            msg.style.display = 'block';
+            setTimeout(() => msg.style.display = 'none', 3000);
+
+            textEl.value = '';
+            render();
+        }
+
+        function deleteEntry(kindergartenName, index) {
+            if(confirm('האם למחוק דיווח זה?')) {
+                appData.entries[kindergartenName].splice(index, 1);
+                saveDataLocal();
+                render();
+            }
+        }
+
+        function addKindergarten() {
+            const name = prompt('הכנס שם גן חדש:');
+            if(name && name.trim()) {
+                const trimmed = name.trim();
+                if(!appData.kindergartens.includes(trimmed)) {
+                    appData.kindergartens.push(trimmed);
+                    if(!appData.entries[trimmed]) appData.entries[trimmed] = [];
+                    activeTab = appData.kindergartens.length - 1;
+                    saveDataLocal();
+                    render();
+                } else {
+                    alert('הגן כבר קיים.');
+                }
+            }
+        }
+
+        function renameKindergarten() {
+            const current = appData.kindergartens[activeTab];
+            const newName = prompt('שם חדש לגן:', current);
+            if(newName && newName.trim() && newName.trim() !== current) {
+                const trimmed = newName.trim();
+                appData.kindergartens[activeTab] = trimmed;
+                appData.entries[trimmed] = appData.entries[current] || [];
+                delete appData.entries[current];
+                saveDataLocal();
+                render();
+            }
+        }
+
+        function deleteCurrentKindergarten() {
+            if(appData.kindergartens.length <= 1) {
+                alert('חייב להישאר לפחות גן אחד במערכת.');
+                return;
+            }
+            const current = appData.kindergartens[activeTab];
+            if(confirm(`האם למחוק את ${current} ואת כל הדיווחים שבו?`)) {
+                appData.kindergartens.splice(activeTab, 1);
+                delete appData.entries[current];
+                activeTab = 0;
+                saveDataLocal();
+                render();
+            }
+        }
+
+        function exportCSV() {
+            let csvContent = "\uFEFFגן,תאריך,שעה,תוכן העדכון\n";
+            appData.kindergartens.forEach(kg => {
+                const entries = appData.entries[kg] || [];
+                entries.forEach(e => {
+                    const safeText = `"${(e.text || '').replace(/"/g, '""')}"`;
+                    csvContent += `"${kg}","${e.date}","${e.timestamp || ''}",${safeText}\n`;
+                });
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'yoman_ganim_export.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        async function toggleSpeech() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if(!SpeechRecognition) { 
+                alert('הדפדפן שלך אינו תומך בהכתבה קולית. מומלץ להשתמש ב-Chrome או Safari.'); 
+                return; 
+            }
+
+            if(isRecording) {
+                if(recognition) recognition.stop();
+                return;
+            }
+
+            try {
+                if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    stream.getTracks().forEach(track => track.stop());
+                }
+            } catch(e) {
+                alert('לא ניתנה הרשאה לגשת למיקרופון. אנא אפשר גישה בהגדרות הדפדפן.');
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'he-IL';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            const micBtn = document.getElementById('mic-btn');
+
+            recognition.onstart = () => { 
+                isRecording = true; 
+                micBtn.className = 'btn-mic recording';
+                micBtn.innerText = '🔴 מאזין...';
+            };
+
+            recognition.onresult = (e) => {
+                const t = e.results[0][0].transcript;
+                document.getElementById('entry-text').value = t;
+                detectAndSwitch(t);
+            };
+
+            recognition.onerror = () => stopMic();
+            recognition.onend = () => stopMic();
+
+            try {
+                recognition.start();
+            } catch(ex) {
+                stopMic();
+            }
+        }
+
+        function stopMic() {
+            isRecording = false;
+            const micBtn = document.getElementById('mic-btn');
+            if(micBtn) {
+                micBtn.className = 'btn-mic';
+                micBtn.innerText = '🎤 הקלטה';
+            }
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/[&<>'"]/g, t => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[t]));
+        }
+
+        render();
+    </script>
+</body>
+</html>
