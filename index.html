@@ -595,36 +595,74 @@
             }
         }
 
-        async function toggleSpeech() {
-            const isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (isAppleMobile) {
-                focusKeyboardDictation();
-                return;
+        function showMicNotice(message) {
+            const status = document.getElementById('status-text');
+            if (status) {
+                status.style.display = 'block';
+                status.style.color = '#b45309';
+                status.textContent = message;
+                setTimeout(() => {
+                    status.style.display = 'none';
+                    status.style.color = '';
+                    status.textContent = '✓ נשמר ונשלח לגוגל שיטס!';
+                }, 4000);
             }
-            if(!SpeechRecognition) {
-                focusKeyboardDictation();
-                return;
-            }
-            if(isRecording) { if(recognition) recognition.stop(); return; }
+        }
 
-            if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+        function getMobileBrowserInfo() {
+            const ua = navigator.userAgent || '';
+            const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            const isAndroid = /Android/i.test(ua);
+            const isChrome = /Chrome|CriOS|Chromium/i.test(ua);
+            return { isIOS, isAndroid, isChrome };
+        }
+
+        async function toggleSpeech() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const isSecureContext = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost';
+            const mobile = getMobileBrowserInfo();
+
+            if (isRecording) {
+                if (recognition) recognition.stop();
+                return;
+            }
+
+            if (!isSecureContext) {
                 alert('ההכתבה הקולית דורשת אתר מאובטח. פתח את האתר דרך https://fieldactivitylog.com ולא כקובץ מקומי.');
                 return;
             }
+
+            if (mobile.isIOS) {
+                focusKeyboardDictation('ב-Chrome באייפון, ההכתבה עובדת דרך המקלדת / Dictation של המערכת ולא דרך SpeechRecognition של האתר.');
+                return;
+            }
+
+            if (!SpeechRecognition) {
+                if (mobile.isAndroid && mobile.isChrome) {
+                    focusKeyboardDictation('ב-Chrome באנדרואיד, אם ההקלטה לא מופעלת, אפשר להפעיל מיקרופון מהגדרות האתר או להשתמש בהכתבה מהמקלדת.');
+                } else {
+                    focusKeyboardDictation('ההכתבה באתר אינה זמינה בדפדפן הזה. השתמש במקלדת/Dictation או ב-Chrome/Edge עם הרשאת מיקרופון.');
+                }
+                return;
+            }
+
             recognition = new SpeechRecognition();
             recognition.lang = 'he-IL';
             recognition.interimResults = false;
+            recognition.continuous = false;
             recognition.maxAlternatives = 1;
 
             const micBtn = document.getElementById('mic-btn');
             recognition.onstart = () => { isRecording = true; micBtn.className = 'btn-mic recording'; micBtn.innerText = '🔴 מאזין...'; };
             recognition.onresult = (e) => {
-                const t = e.results[0][0].transcript;
+                let transcript = '';
+                for (let i = 0; i < e.results.length; i++) {
+                    transcript += e.results[i][0]?.transcript || '';
+                }
+                if (!transcript.trim()) return;
                 const textField = document.getElementById('entry-text');
-                textField.value = [textField.value.trim(), t].filter(Boolean).join(' ');
-                detectAndSwitch(t);
+                textField.value = [textField.value.trim(), transcript.trim()].filter(Boolean).join(' ');
+                detectAndSwitch(transcript.trim());
             };
             recognition.onerror = (event) => {
                 const messages = {
@@ -632,26 +670,28 @@
                     'audio-capture': 'לא נמצא מיקרופון פעיל. בדוק שהוא מחובר ושנבחר כמיקרופון המערכת.',
                     'network': 'שירות ההכתבה הקולית אינו זמין ברשת הזו. נסה Chrome או Edge ובדוק את חיבור האינטרנט.',
                     'no-speech': 'לא זוהה קול. נסה לדבר קרוב יותר למיקרופון.',
-                    'service-not-allowed': 'שירות ההכתבה חסום בדפדפן הזה. בטלפון, לחץ על סמל המיקרופון במקלדת כדי להכתיב לתיבת הטקסט.',
+                    'service-not-allowed': 'שירות ההכתבה חסום בדפדפן הזה. בטלפון, השתמש בהכתבה מהמקלדת או פתח את האתר ב-Chrome/Edge.',
                     'aborted': 'ההקלטה הופסקה.'
                 };
                 stopMic();
-                if (event.error === 'service-not-allowed') {
-                    focusKeyboardDictation();
+                if (event.error === 'service-not-allowed' || event.error === 'not-allowed') {
+                    focusKeyboardDictation('הגישה למיקרופון נחסמה. בדפדפן/מערכת ההפעלה, אפשר הרשאת מיקרופון או השתמש בהכתבה מהמקלדת.');
                 } else if (event.error !== 'aborted') {
                     alert(messages[event.error] || `שגיאת הכתבה: ${event.error || 'לא ידועה'}`);
                 }
             };
             recognition.onend = () => stopMic();
-            try { recognition.start(); } catch(ex) { stopMic(); }
+            try { recognition.start(); } catch (ex) { stopMic(); }
         }
 
-        function focusKeyboardDictation() {
+        function focusKeyboardDictation(message = 'ההכתבה באתר אינה זמינה בדפדפן הזה. השתמש במיקרופון של המקלדת או ב-Chrome/Edge עם הרשאת מיקרופון.') {
             const textField = document.getElementById('entry-text');
-            textField.focus();
-            textField.selectionStart = textField.value.length;
-            textField.selectionEnd = textField.value.length;
-            alert('ההכתבה באתר אינה זמינה בדפדפן הזה. השתמש בסמל המיקרופון של המקלדת כדי להכתיב לתיבת הטקסט.');
+            if (textField) {
+                textField.focus();
+                textField.selectionStart = textField.value.length;
+                textField.selectionEnd = textField.value.length;
+            }
+            alert(message);
         }
 
         function stopMic() {
