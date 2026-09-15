@@ -517,27 +517,23 @@
         }
 
         async function toggleSpeech() {
+            const isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if(!SpeechRecognition) { alert('הדפדפן שלך אינו תומך בהכתבה קולית.'); return; }
+            if (isAppleMobile) {
+                focusKeyboardDictation();
+                return;
+            }
+            if(!SpeechRecognition) {
+                focusKeyboardDictation();
+                return;
+            }
             if(isRecording) { if(recognition) recognition.stop(); return; }
 
             if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
                 alert('ההכתבה הקולית דורשת אתר מאובטח. פתח את האתר דרך https://fieldactivitylog.com ולא כקובץ מקומי.');
                 return;
             }
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert('הדפדפן אינו מאפשר גישה למיקרופון. נסה Chrome או Edge בגרסה עדכנית.');
-                return;
-            }
-
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                stream.getTracks().forEach(track => track.stop());
-            } catch(e) {
-                alert('לא ניתן לגשת למיקרופון. אשר הרשאה לאתר ובדוק שהמיקרופון אינו בשימוש על ידי תוכנה אחרת.');
-                return;
-            }
-
             recognition = new SpeechRecognition();
             recognition.lang = 'he-IL';
             recognition.interimResults = false;
@@ -556,15 +552,26 @@
                     'audio-capture': 'לא נמצא מיקרופון פעיל. בדוק שהוא מחובר ושנבחר כמיקרופון המערכת.',
                     'network': 'שירות ההכתבה הקולית אינו זמין ברשת הזו. נסה Chrome או Edge ובדוק את חיבור האינטרנט.',
                     'no-speech': 'לא זוהה קול. נסה לדבר קרוב יותר למיקרופון.',
+                    'service-not-allowed': 'שירות ההכתבה חסום בדפדפן הזה. בטלפון, לחץ על סמל המיקרופון במקלדת כדי להכתיב לתיבת הטקסט.',
                     'aborted': 'ההקלטה הופסקה.'
                 };
                 stopMic();
-                if (event.error !== 'aborted') {
+                if (event.error === 'service-not-allowed') {
+                    focusKeyboardDictation();
+                } else if (event.error !== 'aborted') {
                     alert(messages[event.error] || `שגיאת הכתבה: ${event.error || 'לא ידועה'}`);
                 }
             };
             recognition.onend = () => stopMic();
             try { recognition.start(); } catch(ex) { stopMic(); }
+        }
+
+        function focusKeyboardDictation() {
+            const textField = document.getElementById('entry-text');
+            textField.focus();
+            textField.selectionStart = textField.value.length;
+            textField.selectionEnd = textField.value.length;
+            alert('ההכתבה באתר אינה זמינה בדפדפן הזה. השתמש בסמל המיקרופון של המקלדת כדי להכתיב לתיבת הטקסט.');
         }
 
         function stopMic() {
