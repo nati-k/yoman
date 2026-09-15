@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>יומן ליווי גנים - Google Sheets Sync</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        :root { --primary: #047857; --primary-dark: #065f46; --bg: #f8fafc; --text: #1e293b; --danger: #e11d48; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+        body { background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 40px; }
+        
+        /* Auth Screen */
+        #auth-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; text-align: center; background: linear-gradient(135deg, #047857, #0f766e); color: white; }
+        .auth-card { background: white; color: var(--text); padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-width: 400px; width: 100%; }
+        .auth-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; color: var(--primary); }
+        .auth-sub { font-size: 0.85rem; color: #64748b; margin-bottom: 24px; line-height: 1.4; }
+        .google-btn { background: white; border: 2px solid #cbd5e1; color: #334155; padding: 12px 20px; border-radius: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; font-size: 0.95rem; transition: background 0.2s; }
+        .google-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
+
+        /* Main App */
+        #app-screen { display: none; }
+        header { background: linear-gradient(135deg, #047857, #0f766e); color: white; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 50; }
+        .header-content { max-width: 800px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+        h1 { font-size: 1.25rem; font-weight: 700; }
+        .subtitle { font-size: 0.75rem; opacity: 0.9; }
+        main { max-width: 800px; margin: 20px auto; padding: 0 16px; }
+        .card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; margin-bottom: 20px; }
+        .label { font-size: 0.85rem; font-weight: 700; color: #475569; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+        textarea { width: 100%; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; font-size: 0.95rem; resize: none; background: #f8fafc; outline: none; }
+        textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(4,120,87,0.1); }
+        .row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+        input[type="date"] { border: 1px solid #cbd5e1; border-radius: 10px; padding: 8px 12px; font-size: 0.9rem; background: #f8fafc; outline: none; }
+        .btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.9rem; transition: background 0.2s; }
+        .btn:hover { background: var(--primary-dark); }
+        .btn-secondary { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 10px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+        .btn-mic { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 10px 14px; border-radius: 12px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; gap: 6px; font-weight: 600; }
+        .btn-mic.recording { background: var(--danger); color: white; border-color: var(--danger); animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        .tabs-container { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 8px; scrollbar-width: none; }
+        .tab-btn { background: white; border: 1px solid #e2e8f0; padding: 10px 16px; border-radius: 12px; font-size: 0.9rem; font-weight: 600; cursor: pointer; white-space: nowrap; color: #475569; display: flex; align-items: center; gap: 6px; }
+        .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 2px 4px rgba(4,120,87,0.2); }
+        .entry-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin-bottom: 12px; position: relative; }
+        .entry-header { display: flex; justify-content: space-between; font-size: 0.75rem; color: #64748b; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+        .badge { background: #d1fae5; color: #065f46; padding: 3px 8px; border-radius: 6px; font-weight: 600; }
+        .status-msg { font-size: 0.8rem; color: #059669; font-weight: 600; margin-top: 8px; display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. Authentication Gatekeeper Screen -->
+    <div id="auth-screen">
+        <div class="auth-card">
+            <div class="auth-title">יומן ליווי גנים</div>
+            <div class="auth-sub">התחבר עם חשבון ה-Google שלך כדי לטעון או ליצור את קובץ הנתונים האישי שלך ב-Google Drive.</div>
+            <button class="google-btn" onclick="handleAuthClick()">
+                <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.13 0-5.78-2.11-6.73-4.96H1.18v3.15C3.18 21.32 7.23 24 12 24z"/><path fill="#FBBC05" d="M5.27 14.24c-.25-.72-.38-1.49-.38-2.24s.13-1.52.38-2.24V6.6H1.18C.43 8.13 0 9.87 0 11.7c0 1.83.43 3.57 1.18 5.1l4.09-2.56z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.23 0 3.18 2.68 1.18 6.6l4.09 3.15c.95-2.85 3.6-4.96 6.73-4.96z"/></svg>
+                התחבר עם Google
+            </button>
+        </div>
+    </div>
+
+    <!-- 2. Main App Screen -->
+    <div id="app-screen">
+        <header>
+            <div class="header-content">
+                <div>
+                    <h1>יומן ליווי גנים</h1>
+                    <div class="subtitle" id="sync-status">מסונכרן ל-Google Sheets ✓</div>
+                </div>
+                <div>
+                    <button onclick="logout()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); color: white; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">התנתק</button>
+                </div>
+            </div>
+        </header>
+        <main>
+            <div class="card">
+                <div class="label">הוספת עדכון חדש (הקלטה קולית או הקלדה)</div>
+                <div class="row">
+                    <div style="font-size: 0.8rem; color: #475569; font-weight: 600;" id="active-label">גן נבחר: גן 1</div>
+                    <div>
+                        <label style="font-size: 0.8rem; margin-left: 6px;">תאריך:</label>
+                        <input type="date" id="entry-date">
+                    </div>
+                </div>
+                <div style="position: relative; margin-bottom: 12px;">
+                    <textarea id="entry-text" rows="3" placeholder="הקלד כאן או לחץ על המיקרופון (למשל: 'גן 3, ביקרנו היום במוקד חצר...')"></textarea>
+                    <button id="mic-btn" class="btn-mic" onclick="toggleSpeech()" style="position: absolute; bottom: 12px; left: 12px;" title="הכתבה קולית">🎤 הקלטה</button>
+                </div>
+                <div class="row" style="justify-content: flex-end; margin-bottom: 0;">
+                    <div id="status-text" class="status-msg">✓ נשמר ונשלח לגוגל שיטס!</div>
+                    <button class="btn" onclick="saveEntry()">שמור עדכון</button>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="font-size: 0.9rem; font-weight: 700; color: #334155;">הגנים שבליווי:</div>
+                <div style="display: flex; gap: 6px;">
+                    <button onclick="addKindergarten()" class="btn-secondary" style="color: var(--primary); border-color: #a7f3d0; background: #e6f4ea;">+ הוסף גן</button>
+                    <button onclick="deleteCurrentKindergarten()" class="btn-secondary" style="color: var(--danger); border-color: #fecdd3; background: #fff1f2;">מחק גן נוכחי</button>
+                </div>
+            </div>
+            <div id="tabs-container" class="tabs-container"></div>
+
+            <div class="card" style="margin-top: 20px;">
+                <div class="row" style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 12px;">
+                    <div>
+                        <h2 id="current-title" style="font-size: 1.1rem; font-weight: 700;">גן 1</h2>
+                        <div style="font-size: 0.75rem; color: #64748b;">היסטוריית דיווחים</div>
+                    </div>
+                    <div>
+                        <button onclick="renameKindergarten()" class="btn-secondary">שינוי שם</button>
+                    </div>
+                </div>
+                <div id="entries-list"></div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const CLIENT_ID = '265026579540-ahc7t8fnaqnjj0q4pcpbg9f3fh6i8q98.apps.googleusercontent.com';
+        
+        let tokenClient;
+        let accessToken = localStorage.getItem('yoman_access_token') || null;
+        let spreadsheetId = localStorage.getItem('yoman_sheet_id') || null;
+
+        let appData = { kindergartens: [], entries: {} };
+        let activeTab = 0;
+        let recognition = null;
+        let isRecording = false;
+
+        document.getElementById('entry-date').valueAsDate = new Date();
+
+        window.onload = function () {
+            initGsi();
+            if (accessToken) {
+                verifyAndLoadData();
+            }
+        };
+
+        function initGsi() {
+            if(typeof google === 'undefined') return;
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file',
+                callback: async (response) => {
+                    if (response.error !== undefined) {
+                        alert('שגיאת התחברות: ' + response.error);
+                        return;
+                    }
+                    accessToken = response.access_token;
+                    localStorage.setItem('yoman_access_token', accessToken);
+                    await verifyAndLoadData();
+                },
+            });
+        }
+
+        function handleAuthClick() {
+            if (tokenClient) {
+                tokenClient.requestAccessToken({ prompt: '' });
+            }
+        }
+
+        function logout() {
+            accessToken = null;
+            spreadsheetId = null;
+            localStorage.removeItem('yoman_access_token');
+            localStorage.removeItem('yoman_sheet_id');
+            document.getElementById('app-screen').style.display = 'none';
+            document.getElementById('auth-screen').style.display = 'flex';
+        }
+
+        async function verifyAndLoadData() {
+            try {
+                // קידוד השאילתא כדי למנוע שגיאות של תווים עבריים ב-URL
+                const searchQuery = encodeURIComponent("name='יומן ליווי גנים' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false");
+                
+                const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${searchQuery}`, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+
+                if (res.status === 401) {
+                    // פג תוקף הטוקן
+                    logout();
+                    alert('פג תוקף החיבור. אנא התחבר מחדש.');
+                    return;
+                }
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error ? data.error.message : 'שגיאה בגישה ל-Google Drive');
+                }
+
+                if (data.files && data.files.length > 0) {
+                    spreadsheetId = data.files[0].id;
+                    localStorage.setItem('yoman_sheet_id', spreadsheetId);
+                    await loadFromSheetCloud();
+                } else {
+                    const createNew = confirm("לא נמצא קובץ בשם 'יומן ליווי גנים' בדהרייב שלך.\nהאם ליצור קובץ חדש אוטומטית עם 6 גנים ברירת מחדל?");
+                    if (createNew) {
+                        await createNewCloudSheet();
+                    } else {
+                        logout();
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                if (err.message.includes('Failed to fetch')) {
+                    alert('שגיאת תקשורת (Failed to fetch). ייתכן שחוסם פרסומות חוסם את הגישה לשרתי Google. נסה לכבות חוסמי פרסומות או לנסות בדפדפן אחר.');
+                } else {
+                    alert('שגיאה מול גוגל: ' + err.message);
+                }
+            }
+        }
+
+        async function createNewCloudSheet() {
+            const defaultKgs = ["גן 1", "גן 2", "גן 3", "גן 4", "גן 5", "גן 6"];
+            const body = {
+                properties: { title: 'יומן ליווי גנים' },
+                sheets: defaultKgs.map(name => ({ properties: { title: name } }))
+            };
+            const res = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const sheetObj = await res.json();
+            
+            if (!res.ok) {
+                throw new Error(sheetObj.error ? sheetObj.error.message : 'שגיאה ביצירת הגיליון');
+            }
+
+            spreadsheetId = sheetObj.spreadsheetId;
+            localStorage.setItem('yoman_sheet_id', spreadsheetId);
+
+            for (let name of defaultKgs) {
+                await appendRowToSheet(name, ['תאריך', 'תוכן העדכון', 'שעת רישום']);
+            }
+            await loadFromSheetCloud();
+        }
+
+        async function loadFromSheetCloud() {
+            if (!spreadsheetId || !accessToken) return;
+            try {
+                const res = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}?includeGridData=true`, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+                const sheetMeta = await res.json();
+                
+                if (!res.ok) {
+                    throw new Error(sheetMeta.error ? sheetMeta.error.message : 'שגיאה בטעינת הגיליון');
+                }
+
+                let newEntries = {};
+                let newKgs = [];
+
+                sheetMeta.sheets.forEach(s => {
+                    const title = s.properties.title;
+                    newKgs.push(title);
+                    let rows = [];
+                    if (s.data[0].rowData) {
+                        s.data[0].rowData.forEach((row, idx) => {
+                            if (idx > 0 && row.values && row.values[0] && row.values[0].formattedValue) {
+                                rows.push({
+                                    date: row.values[0].formattedValue,
+                                    text: row.values[1] ? row.values[1].formattedValue : '',
+                                    timestamp: row.values[2] ? row.values[2].formattedValue : ''
+                                });
+                            }
+                        });
+                    }
+                    newEntries[title] = rows;
+                });
+
+                appData.kindergartens = newKgs.length > 0 ? newKgs : ["גן 1", "גן 2", "גן 3", "גן 4", "גן 5", "גן 6"];
+                appData.entries = newEntries;
+
+                document.getElementById('auth-screen').style.display = 'none';
+                document.getElementById('app-screen').style.display = 'block';
+                render();
+            } catch (e) {
+                console.error(e);
+                alert('שגיאה בטעינת נתונים: ' + e.message);
+            }
+        }
+
+        async function appendRowToSheet(sheetName, rowData) {
+            if (!spreadsheetId || !accessToken) return;
+            await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A1:append?valueInputOption=USER_ENTERED`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ values: [rowData] })
+            });
+        }
+
+        function formatHebrewDate(dateStr) {
+            if (!dateStr) return '';
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                const year = parts[0];
+                const monthNum = parseInt(parts[1], 10);
+                const day = parseInt(parts[2], 10);
+                const months = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+                if (monthNum >= 1 && monthNum <= 12) {
+                    return `${day} ב${months[monthNum - 1]} ${year}`;
+                }
+            }
+            return dateStr;
+        }
+
+        function render() {
+            const container = document.getElementById('tabs-container');
+            container.innerHTML = '';
+            
+            if (activeTab >= appData.kindergartens.length) activeTab = 0;
+            const activeName = appData.kindergartens[activeTab];
+
+            appData.kindergartens.forEach((name, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `tab-btn ${idx === activeTab ? 'active' : ''}`;
+                btn.innerText = name;
+                btn.onclick = () => { activeTab = idx; render(); };
+                container.appendChild(btn);
+            });
+
+            document.getElementById('current-title').innerText = activeName;
+            document.getElementById('active-label').innerText = `גן נבחר: ${activeName}`;
+
+            const list = document.getElementById('entries-list');
+            list.innerHTML = '';
+            const entries = (appData.entries[activeName] || []).slice().reverse();
+
+            if (entries.length === 0) {
+                list.innerHTML = `<div style="text-align: center; color: #94a3b8; padding: 30px 0; font-size: 0.85rem;">אין עדכונים רשומים עבור ${activeName} עדיין.</div>`;
+                return;
+            }
+
+            entries.forEach(e => {
+                const div = document.createElement('div');
+                div.className = 'entry-card';
+                div.innerHTML = `
+                    <div class="entry-header">
+                        <span class="badge">${formatHebrewDate(e.date)} (${e.timestamp || ''})</span>
+                    </div>
+                    <div style="font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(e.text)}</div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function detectAndSwitch(text) {
+            const lower = text.toLowerCase();
+            const map = [
+                {names: ['גן 1', 'גן אחת', 'גן ראשון'], idx: 0},
+                {names: ['גן 2', 'גן שתיים', 'גן שניים', 'גן שני'], idx: 1},
+                {names: ['גן 3', 'גן שלוש', 'גן שלש'], idx: 2},
+                {names: ['גן 4', 'גן ארבע'], idx: 3},
+                {names: ['גן 5', 'גן חמש'], idx: 4},
+                {names: ['גן 6', 'גן שש'], idx: 5}
+            ];
+
+            for(let i=0; i<appData.kindergartens.length; i++) {
+                if(lower.includes(appData.kindergartens[i].toLowerCase())) {
+                    activeTab = i;
+                    render();
+                    return;
+                }
+            }
+
+            for(let m of map) {
+                for(let n of m.names) {
+                    if(lower.includes(n) && m.idx < appData.kindergartens.length) {
+                        activeTab = m.idx;
+                        render();
+                        return;
+                    }
+                }
+            }
+        }
+
+        async function saveEntry() {
+            const textEl = document.getElementById('entry-text');
+            const dateEl = document.getElementById('entry-date');
+            const text = textEl.value.trim();
+            const date = dateEl.value;
+
+            if(!text) { alert('נא להזין טקסט לעדכון.'); return; }
+            if(!date) { alert('נא לבחור תאריך.'); return; }
+
+            detectAndSwitch(text);
+            const activeName = appData.kindergartens[activeTab];
+
+            if(!appData.entries[activeName]) appData.entries[activeName] = [];
+            const timeStr = new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+            const newEntry = { date: date, text: text, timestamp: timeStr };
+            
+            appData.entries[activeName].push(newEntry);
+            render();
+
+            document.getElementById('sync-status').innerText = "שומר לגוגל שיטס...";
+            await appendRowToSheet(activeName, [date, text, timeStr]);
+            document.getElementById('sync-status').innerText = "מסונכרן ל-Google Sheets ✓";
+
+            const msg = document.getElementById('status-text');
+            msg.style.display = 'block';
+            setTimeout(() => msg.style.display = 'none', 3000);
+            textEl.value = '';
+        }
+
+        async function addKindergarten() {
+            const name = prompt('הכנס שם גן חדש:');
+            if(name && name.trim()) {
+                const trimmed = name.trim();
+                if(!appData.kindergartens.includes(trimmed)) {
+                    appData.kindergartens.push(trimmed);
+                    if(!appData.entries[trimmed]) appData.entries[trimmed] = [];
+                    activeTab = appData.kindergartens.length - 1;
+                    render();
+
+                    await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ requests: [{ addSheet: { properties: { title: trimmed } } }] })
+                    });
+                    await appendRowToSheet(trimmed, ['תאריך', 'תוכן העדכון', 'שעת רישום']);
+                } else {
+                    alert('הגן כבר קיים.');
+                }
+            }
+        }
+
+        async function renameKindergarten() {
+            const current = appData.kindergartens[activeTab];
+            const newName = prompt('שם חדש לגן:', current);
+            if(newName && newName.trim() && newName.trim() !== current) {
+                const trimmed = newName.trim();
+                appData.kindergartens[activeTab] = trimmed;
+                appData.entries[trimmed] = appData.entries[current] || [];
+                delete appData.entries[current];
+                render();
+
+                const res = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}`, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+                const meta = await res.json();
+                const sheet = meta.sheets.find(s => s.properties.title === current);
+                if(sheet) {
+                    const sheetId = sheet.properties.sheetId;
+                    await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ requests: [{ updateSheetProperties: { properties: { sheetId: sheetId, title: trimmed }, fields: 'title' } }] })
+                    });
+                }
+            }
+        }
+
+        async function deleteCurrentKindergarten() {
+            if(appData.kindergartens.length <= 1) {
+                alert('חייב להישאר לפחות גן אחד במערכת.');
+                return;
+            }
+            const current = appData.kindergartens[activeTab];
+            if(confirm(`האם למחוק את ${current} ואת כל הדיווחים שבו מהגיליון?`)) {
+                const res = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}`, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+                const meta = await res.json();
+                const sheet = meta.sheets.find(s => s.properties.title === current);
+                if(sheet) {
+                    const sheetId = sheet.properties.sheetId;
+                    await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ requests: [{ deleteSheet: { sheetId: sheetId } }] })
+                    });
+                }
+                appData.kindergartens.splice(activeTab, 1);
+                delete appData.entries[current];
+                activeTab = 0;
+                render();
+            }
+        }
+
+        async function toggleSpeech() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if(!SpeechRecognition) { alert('הדפדפן שלך אינו תומך בהכתבה קולית.'); return; }
+            if(isRecording) { if(recognition) recognition.stop(); return; }
+
+            try {
+                if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    stream.getTracks().forEach(track => track.stop());
+                }
+            } catch(e) {
+                alert('לא ניתנה הרשאה לגשת למיקרופון.');
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'he-IL';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            const micBtn = document.getElementById('mic-btn');
+            recognition.onstart = () => { isRecording = true; micBtn.className = 'btn-mic recording'; micBtn.innerText = '🔴 מאזין...'; };
+            recognition.onresult = (e) => {
+                const t = e.results[0][0].transcript;
+                document.getElementById('entry-text').value = t;
+                detectAndSwitch(t);
+            };
+            recognition.onerror = () => stopMic();
+            recognition.onend = () => stopMic();
+            try { recognition.start(); } catch(ex) { stopMic(); }
+        }
+
+        function stopMic() {
+            isRecording = false;
+            const micBtn = document.getElementById('mic-btn');
+            if(micBtn) { micBtn.className = 'btn-mic'; micBtn.innerText = '🎤 הקלטה'; }
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/[&<>'"]/g, t => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[t]));
+        }
+    </script>
+</body>
+</html>
