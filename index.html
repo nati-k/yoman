@@ -247,7 +247,7 @@
                 properties: { title: 'יומן ליווי גנים' },
                 sheets: defaultKgs.map(name => ({ properties: { title: name } }))
             };
-            const res = await googleFetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets`, {
+            const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -270,7 +270,7 @@
         async function loadFromSheetCloud() {
             if (!spreadsheetId || !accessToken) return;
             try {
-                const res = await googleFetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}?includeGridData=true`, {
+                const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?includeGridData=true`, {
                     headers: { Authorization: `Bearer ${accessToken}` }
                 });
                 const sheetMeta = await res.json();
@@ -315,7 +315,7 @@
         async function appendRowToSheet(sheetName, rowData) {
             if (!spreadsheetId || !accessToken) return;
             const range = `'${sheetName.replace(/'/g, "''")}'!A1`;
-            const res = await googleFetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
+            const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ values: [rowData] })
@@ -459,7 +459,7 @@
                 const trimmed = name.trim();
                 if(!appData.kindergartens.includes(trimmed)) {
                     try {
-                        const res = await googleFetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                        const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
                             method: 'POST',
                             headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                             body: JSON.stringify({ requests: [{ addSheet: { properties: { title: trimmed } } }] })
@@ -485,14 +485,14 @@
             if(newName && newName.trim() && newName.trim() !== current) {
                 const trimmed = newName.trim();
                 try {
-                    const res = await googleFetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}`, {
+                    const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
                         headers: { Authorization: `Bearer ${accessToken}` }
                     });
                     const meta = await requireGoogleSuccess(res, 'שגיאה באיתור הגן');
                     const sheet = meta.sheets.find(s => s.properties.title === current);
                     if(sheet) {
                         const sheetId = sheet.properties.sheetId;
-                        const updateRes = await googleFetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                        const updateRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
                             method: 'POST',
                             headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                             body: JSON.stringify({ requests: [{ updateSheetProperties: { properties: { sheetId: sheetId, title: trimmed }, fields: 'title' } }] })
@@ -516,14 +516,14 @@
             }
             const current = appData.kindergartens[activeTab];
             if(confirm(`האם למחוק את ${current} ואת כל הדיווחים שבו מהגיליון?`)) {
-                const res = await googleFetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}`, {
+                const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
                     headers: { Authorization: `Bearer ${accessToken}` }
                 });
                 const meta = await res.json();
                 const sheet = meta.sheets.find(s => s.properties.title === current);
                 if(sheet) {
                     const sheetId = sheet.properties.sheetId;
-                    const deleteRes = await googleFetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                    const deleteRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
                         method: 'POST',
                         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ requests: [{ deleteSheet: { sheetId: sheetId } }] })
