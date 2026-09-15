@@ -6,44 +6,49 @@
     <title>יומן ליווי גנים - Google Sheets Sync</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
-        :root { --primary: #047857; --primary-dark: #065f46; --bg: #f8fafc; --text: #1e293b; --danger: #e11d48; }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-        body { background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 40px; }
+        :root { --primary: #0f766e; --primary-dark: #115e59; --primary-soft: #ccfbf1; --bg: #f4f7f6; --surface: #ffffff; --surface-soft: #f0fdfa; --text: #173b3a; --muted: #65817e; --line: #d9e8e5; --danger: #be123c; --shadow: 0 18px 45px rgba(20, 74, 70, 0.09); }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Trebuchet MS", "Arial Hebrew", sans-serif; }
+        body { background: radial-gradient(circle at 10% 0%, #e4f6f1 0, transparent 33%), var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 40px; }
         
         /* Auth Screen */
-        #auth-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; text-align: center; background: linear-gradient(135deg, #047857, #0f766e); color: white; }
-        .auth-card { background: white; color: var(--text); padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-width: 400px; width: 100%; }
-        .auth-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; color: var(--primary); }
-        .auth-sub { font-size: 0.85rem; color: #64748b; margin-bottom: 24px; line-height: 1.4; }
-        .google-btn { background: white; border: 2px solid #cbd5e1; color: #334155; padding: 12px 20px; border-radius: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; font-size: 0.95rem; transition: background 0.2s; }
-        .google-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
+        #auth-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; text-align: center; background: linear-gradient(145deg, #0e4f4c, #0f766e 58%, #4c9b88); color: white; }
+        .auth-card { background: rgba(255,255,255,0.97); color: var(--text); padding: 42px 34px; border-radius: 28px; box-shadow: 0 28px 70px rgba(4, 47, 46, 0.28); max-width: 430px; width: 100%; }
+        .auth-mark { width: 58px; height: 58px; margin: 0 auto 20px; display: grid; place-items: center; border-radius: 18px; background: var(--primary-soft); color: var(--primary); font-size: 1.7rem; }
+        .auth-title { font-size: 1.8rem; font-weight: 800; letter-spacing: .01em; margin-bottom: 10px; color: var(--text); }
+        .auth-sub { font-size: 0.95rem; color: var(--muted); margin-bottom: 28px; line-height: 1.6; }
+        .google-btn { background: var(--text); border: 0; color: white; padding: 14px 20px; border-radius: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; font-size: 0.95rem; transition: transform .2s, background .2s; }
+        .google-btn:hover { background: #0b2928; transform: translateY(-2px); }
 
         /* Main App */
         #app-screen { display: none; }
-        header { background: linear-gradient(135deg, #047857, #0f766e); color: white; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 50; }
-        .header-content { max-width: 800px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
-        h1 { font-size: 1.25rem; font-weight: 700; }
-        .subtitle { font-size: 0.75rem; opacity: 0.9; }
-        main { max-width: 800px; margin: 20px auto; padding: 0 16px; }
-        .card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; margin-bottom: 20px; }
-        .label { font-size: 0.85rem; font-weight: 700; color: #475569; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
-        textarea { width: 100%; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; font-size: 0.95rem; resize: none; background: #f8fafc; outline: none; }
-        textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(4,120,87,0.1); }
-        .row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
-        input[type="date"] { border: 1px solid #cbd5e1; border-radius: 10px; padding: 8px 12px; font-size: 0.9rem; background: #f8fafc; outline: none; }
-        .btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.9rem; transition: background 0.2s; }
-        .btn:hover { background: var(--primary-dark); }
-        .btn-secondary { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 10px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
-        .btn-mic { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 10px 14px; border-radius: 12px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; gap: 6px; font-weight: 600; }
+        header { background: rgba(14, 79, 76, .96); color: white; padding: 18px 20px; box-shadow: 0 7px 25px rgba(20, 74, 70, .16); position: sticky; top: 0; z-index: 50; backdrop-filter: blur(12px); }
+        .header-content { max-width: 900px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 18px; }
+        h1 { font-size: 1.35rem; font-weight: 800; }
+        .subtitle { font-size: 0.78rem; opacity: .78; margin-top: 3px; }
+        main { max-width: 900px; margin: 30px auto; padding: 0 20px; }
+        .card { background: var(--surface); border-radius: 22px; padding: 26px; box-shadow: var(--shadow); border: 1px solid rgba(217,232,229,.8); margin-bottom: 22px; }
+        .label { font-size: 1rem; font-weight: 800; color: var(--text); margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+        textarea { width: 100%; min-height: 126px; border: 1px solid var(--line); border-radius: 16px; padding: 16px; font-size: 1rem; line-height: 1.6; resize: vertical; background: var(--surface-soft); color: var(--text); outline: none; transition: border .2s, box-shadow .2s; }
+        textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(15,118,110,.12); background: white; }
+        .row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+        input[type="date"] { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: .9rem; color: var(--text); background: var(--surface-soft); outline: none; }
+        .btn { background: var(--primary); color: white; border: none; padding: 12px 22px; border-radius: 13px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: .92rem; transition: transform .2s, background .2s, box-shadow .2s; }
+        .btn:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: 0 8px 16px rgba(15,118,110,.2); }
+        .btn-secondary { background: white; color: var(--muted); border: 1px solid var(--line); padding: 9px 13px; border-radius: 11px; font-size: .8rem; font-weight: 800; cursor: pointer; transition: background .2s, color .2s; }
+        .btn-secondary:hover { color: var(--primary); background: var(--surface-soft); }
+        .btn-mic { background: white; color: var(--muted); border: 1px solid var(--line); padding: 10px 14px; border-radius: 12px; cursor: pointer; font-size: .9rem; display: flex; align-items: center; gap: 6px; font-weight: 800; }
         .btn-mic.recording { background: var(--danger); color: white; border-color: var(--danger); animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
-        .tabs-container { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 8px; scrollbar-width: none; }
-        .tab-btn { background: white; border: 1px solid #e2e8f0; padding: 10px 16px; border-radius: 12px; font-size: 0.9rem; font-weight: 600; cursor: pointer; white-space: nowrap; color: #475569; display: flex; align-items: center; gap: 6px; }
-        .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 2px 4px rgba(4,120,87,0.2); }
-        .entry-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin-bottom: 12px; position: relative; }
-        .entry-header { display: flex; justify-content: space-between; font-size: 0.75rem; color: #64748b; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
-        .badge { background: #d1fae5; color: #065f46; padding: 3px 8px; border-radius: 6px; font-weight: 600; }
-        .status-msg { font-size: 0.8rem; color: #059669; font-weight: 600; margin-top: 8px; display: none; }
+        .tabs-container { display: flex; overflow-x: auto; gap: 9px; padding: 2px 2px 12px; scrollbar-width: none; }
+        .tab-btn { background: rgba(255,255,255,.78); border: 1px solid var(--line); padding: 11px 17px; border-radius: 13px; font-size: .9rem; font-weight: 800; cursor: pointer; white-space: nowrap; color: var(--muted); display: flex; align-items: center; gap: 6px; transition: transform .2s, background .2s; }
+        .tab-btn:hover { transform: translateY(-2px); }
+        .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 8px 18px rgba(15,118,110,.22); }
+        .entry-card { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin-bottom: 12px; position: relative; animation: rise .35s ease both; }
+        .entry-header { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); margin-bottom: 10px; border-bottom: 1px solid var(--line); padding-bottom: 9px; }
+        .badge { background: var(--primary-soft); color: var(--primary-dark); padding: 5px 9px; border-radius: 8px; font-weight: 800; }
+        .status-msg { font-size: .82rem; color: var(--primary); font-weight: 800; margin-inline-end: auto; display: none; }
+        @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        @media (max-width: 600px) { main { margin-top: 18px; padding: 0 12px; } .card { padding: 18px; border-radius: 18px; } .header-content { align-items: flex-start; } h1 { font-size: 1.15rem; } .row .btn { width: 100%; justify-content: center; } .auth-card { padding: 32px 22px; } }
     </style>
 </head>
 <body>
@@ -51,6 +56,7 @@
     <!-- 1. Authentication Gatekeeper Screen -->
     <div id="auth-screen">
         <div class="auth-card">
+            <div class="auth-mark" aria-hidden="true">✦</div>
             <div class="auth-title">יומן ליווי גנים</div>
             <div class="auth-sub">התחבר עם חשבון ה-Google שלך כדי לטעון או ליצור את קובץ הנתונים האישי שלך ב-Google Drive.</div>
             <button class="google-btn" onclick="handleAuthClick()">
@@ -75,7 +81,7 @@
         </header>
         <main>
             <div class="card">
-                <div class="label">הוספת עדכון חדש (הקלטה קולית או הקלדה)</div>
+                <div class="label">מה תרצה לתעד היום?</div>
                 <div class="row">
                     <div style="font-size: 0.8rem; color: #475569; font-weight: 600;" id="active-label">גן נבחר: גן 1</div>
                     <div>
@@ -172,13 +178,10 @@
 
         async function verifyAndLoadData() {
             try {
-                if (location.protocol === 'file:') {
-                    throw new Error('יש לפתוח את האתר דרך HTTPS או שרת מקומי, לא כקובץ מקומי.');
-                }
                 // קידוד השאילתא כדי למנוע שגיאות של תווים עבריים ב-URL
                 const searchQuery = encodeURIComponent("name='יומן ליווי גנים' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false");
                 
-                const res = await googleFetch(`https://www.googleapis.com/drive/v3/files?q=${searchQuery}`, {
+                const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${searchQuery}`, {
                     headers: { Authorization: `Bearer ${accessToken}` }
                 });
 
@@ -209,35 +212,11 @@
                 }
             } catch (err) {
                 console.error(err);
-                if (err.name === 'TypeError' || err.message.includes('Failed to fetch')) {
-                    alert(`לא ניתן להתחבר ל-Google API.
-
-כתובת האתר: ${location.origin}
-סיבה: הדפדפן לא קיבל תשובת רשת מ-googleapis.com.
-
-בדוק:
-1. שהכתובת היא HTTPS ולא file://.
-2. שהדומיין ${location.host} מוגדר ב-Google Cloud תחת Authorized JavaScript origins.
-3. שאין חוסם פרסומות, VPN או רשת ארגונית שחוסמים googleapis.com.
-4. ב-DevTools > Network חפש בקשה ל-drive/v3/files ובדוק את השגיאה.`);
+                if (err.message.includes('Failed to fetch')) {
+                    alert('שגיאת תקשורת (Failed to fetch). ייתכן שחוסם פרסומות חוסם את הגישה לשרתי Google. נסה לכבות חוסמי פרסומות או לנסות בדפדפן אחר.');
                 } else {
                     alert('שגיאה מול גוגל: ' + err.message);
                 }
-            }
-        }
-
-        async function googleFetch(url, options = {}) {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
-            try {
-                return await fetch(url, { ...options, signal: controller.signal });
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    throw new Error('החיבור ל-Google API ארך יותר מדי זמן.');
-                }
-                throw error;
-            } finally {
-                clearTimeout(timeoutId);
             }
         }
 
@@ -247,7 +226,7 @@
                 properties: { title: 'יומן ליווי גנים' },
                 sheets: defaultKgs.map(name => ({ properties: { title: name } }))
             };
-            const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets`, {
+            const res = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -270,7 +249,7 @@
         async function loadFromSheetCloud() {
             if (!spreadsheetId || !accessToken) return;
             try {
-                const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?includeGridData=true`, {
+                const res = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}?includeGridData=true`, {
                     headers: { Authorization: `Bearer ${accessToken}` }
                 });
                 const sheetMeta = await res.json();
@@ -315,7 +294,7 @@
         async function appendRowToSheet(sheetName, rowData) {
             if (!spreadsheetId || !accessToken) return;
             const range = `'${sheetName.replace(/'/g, "''")}'!A1`;
-            const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
+            const res = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ values: [rowData] })
@@ -459,7 +438,7 @@
                 const trimmed = name.trim();
                 if(!appData.kindergartens.includes(trimmed)) {
                     try {
-                        const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                        const res = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
                             method: 'POST',
                             headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                             body: JSON.stringify({ requests: [{ addSheet: { properties: { title: trimmed } } }] })
@@ -485,14 +464,14 @@
             if(newName && newName.trim() && newName.trim() !== current) {
                 const trimmed = newName.trim();
                 try {
-                    const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
+                    const res = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}`, {
                         headers: { Authorization: `Bearer ${accessToken}` }
                     });
                     const meta = await requireGoogleSuccess(res, 'שגיאה באיתור הגן');
                     const sheet = meta.sheets.find(s => s.properties.title === current);
                     if(sheet) {
                         const sheetId = sheet.properties.sheetId;
-                        const updateRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                        const updateRes = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
                             method: 'POST',
                             headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                             body: JSON.stringify({ requests: [{ updateSheetProperties: { properties: { sheetId: sheetId, title: trimmed }, fields: 'title' } }] })
@@ -516,14 +495,14 @@
             }
             const current = appData.kindergartens[activeTab];
             if(confirm(`האם למחוק את ${current} ואת כל הדיווחים שבו מהגיליון?`)) {
-                const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
+                const res = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}`, {
                     headers: { Authorization: `Bearer ${accessToken}` }
                 });
                 const meta = await res.json();
                 const sheet = meta.sheets.find(s => s.properties.title === current);
                 if(sheet) {
                     const sheetId = sheet.properties.sheetId;
-                    const deleteRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                    const deleteRes = await fetch(`https://www.googleapis.com/spreadsheets/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
                         method: 'POST',
                         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ requests: [{ deleteSheet: { sheetId: sheetId } }] })
