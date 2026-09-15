@@ -632,13 +632,10 @@
                 return;
             }
 
-            if (mobile.isIOS) {
-                focusKeyboardDictation('ב-Chrome באייפון, ההכתבה עובדת דרך המקלדת / Dictation של המערכת ולא דרך SpeechRecognition של האתר.');
-                return;
-            }
-
             if (!SpeechRecognition) {
-                if (mobile.isAndroid && mobile.isChrome) {
+                if (mobile.isIOS) {
+                    focusKeyboardDictation('ב-Chrome באייפון, ההכתבה עשויה לעבוד רק דרך Dictation של המקלדת. אם המיקרופון חסום, אפשר להפעיל אותו בהגדרות האפליקציה/אתר.');
+                } else if (mobile.isAndroid && mobile.isChrome) {
                     focusKeyboardDictation('ב-Chrome באנדרואיד, אם ההקלטה לא מופעלת, אפשר להפעיל מיקרופון מהגדרות האתר או להשתמש בהכתבה מהמקלדת.');
                 } else {
                     focusKeyboardDictation('ההכתבה באתר אינה זמינה בדפדפן הזה. השתמש במקלדת/Dictation או ב-Chrome/Edge עם הרשאת מיקרופון.');
