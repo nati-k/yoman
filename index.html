@@ -210,7 +210,16 @@
             } catch (err) {
                 console.error(err);
                 if (err.name === 'TypeError' || err.message.includes('Failed to fetch')) {
-                    alert('לא ניתן להתחבר ל-Google API. בדוק שהאתר פתוח בכתובת HTTPS, שהדומיין fieldactivitylog.com מוגדר ב-Google Cloud תחת Authorized JavaScript origins, ושאין חוסם פרסומות או VPN שחוסם googleapis.com.');
+                    alert(`לא ניתן להתחבר ל-Google API.
+
+כתובת האתר: ${location.origin}
+סיבה: הדפדפן לא קיבל תשובת רשת מ-googleapis.com.
+
+בדוק:
+1. שהכתובת היא HTTPS ולא file://.
+2. שהדומיין ${location.host} מוגדר ב-Google Cloud תחת Authorized JavaScript origins.
+3. שאין חוסם פרסומות, VPN או רשת ארגונית שחוסמים googleapis.com.
+4. ב-DevTools > Network חפש בקשה ל-drive/v3/files ובדוק את השגיאה.`);
                 } else {
                     alert('שגיאה מול גוגל: ' + err.message);
                 }
