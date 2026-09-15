@@ -521,13 +521,20 @@
             if(!SpeechRecognition) { alert('הדפדפן שלך אינו תומך בהכתבה קולית.'); return; }
             if(isRecording) { if(recognition) recognition.stop(); return; }
 
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                alert('ההכתבה הקולית דורשת אתר מאובטח. פתח את האתר דרך https://fieldactivitylog.com ולא כקובץ מקומי.');
+                return;
+            }
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('הדפדפן אינו מאפשר גישה למיקרופון. נסה Chrome או Edge בגרסה עדכנית.');
+                return;
+            }
+
             try {
-                if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    stream.getTracks().forEach(track => track.stop());
-                }
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream.getTracks().forEach(track => track.stop());
             } catch(e) {
-                alert('לא ניתנה הרשאה לגשת למיקרופון.');
+                alert('לא ניתן לגשת למיקרופון. אשר הרשאה לאתר ובדוק שהמיקרופון אינו בשימוש על ידי תוכנה אחרת.');
                 return;
             }
 
@@ -543,7 +550,19 @@
                 document.getElementById('entry-text').value = t;
                 detectAndSwitch(t);
             };
-            recognition.onerror = () => stopMic();
+            recognition.onerror = (event) => {
+                const messages = {
+                    'not-allowed': 'הגישה למיקרופון נחסמה. אפשר את המיקרופון בהגדרות האתר ובדפדפן.',
+                    'audio-capture': 'לא נמצא מיקרופון פעיל. בדוק שהוא מחובר ושנבחר כמיקרופון המערכת.',
+                    'network': 'שירות ההכתבה הקולית אינו זמין ברשת הזו. נסה Chrome או Edge ובדוק את חיבור האינטרנט.',
+                    'no-speech': 'לא זוהה קול. נסה לדבר קרוב יותר למיקרופון.',
+                    'aborted': 'ההקלטה הופסקה.'
+                };
+                stopMic();
+                if (event.error !== 'aborted') {
+                    alert(messages[event.error] || `שגיאת הכתבה: ${event.error || 'לא ידועה'}`);
+                }
+            };
             recognition.onend = () => stopMic();
             try { recognition.start(); } catch(ex) { stopMic(); }
         }
