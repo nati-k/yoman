@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>יומן ליווי גנים - Google Sheets Sync</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.min.js" defer></script>
+    <script src="https://unpkg.com/docxtemplater@3.48.0/build/docxtemplater.js" defer></script>
     <style>
         :root { --primary: #0f766e; --primary-dark: #115e59; --primary-soft: #ccfbf1; --bg: #f4f7f6; --surface: #ffffff; --surface-soft: #f0fdfa; --text: #173b3a; --muted: #65817e; --line: #d9e8e5; --danger: #be123c; --shadow: 0 18px 45px rgba(20, 74, 70, 0.09); }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Trebuchet MS", "Arial Hebrew", sans-serif; }
@@ -31,7 +33,14 @@
         textarea { width: 100%; min-height: 126px; border: 1px solid var(--line); border-radius: 16px; padding: 16px; font-size: 1rem; line-height: 1.6; resize: vertical; background: var(--surface-soft); color: var(--text); outline: none; transition: border .2s, box-shadow .2s; }
         textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(15,118,110,.12); background: white; }
         .row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-        input[type="date"] { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: .9rem; color: var(--text); background: var(--surface-soft); outline: none; }
+        input[type="date"], input[type="time"], input[type="month"], input[type="text"] { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: .9rem; color: var(--text); background: var(--surface-soft); outline: none; }
+        .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+        .field { display: flex; flex-direction: column; gap: 6px; }
+        .field span { font-size: .8rem; color: var(--muted); font-weight: 800; }
+        .field input { width: 100%; }
+        .report-summary { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: .83rem; font-weight: 800; }
+        .template-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+            .drive-template-note { color: var(--muted); font-size: .82rem; font-weight: 700; line-height: 1.5; }
         .btn { background: var(--primary); color: white; border: none; padding: 12px 22px; border-radius: 13px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: .92rem; transition: transform .2s, background .2s, box-shadow .2s; }
         .btn:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: 0 8px 16px rgba(15,118,110,.2); }
         button:disabled { cursor: wait; opacity: .58; transform: none !important; box-shadow: none !important; }
@@ -50,7 +59,7 @@
         .badge { background: var(--primary-soft); color: var(--primary-dark); padding: 5px 9px; border-radius: 8px; font-weight: 800; }
         .status-msg { font-size: .82rem; color: var(--primary); font-weight: 800; margin-inline-end: auto; display: none; }
         @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        @media (max-width: 600px) { main { margin-top: 18px; padding: 0 12px; } .card { padding: 18px; border-radius: 18px; } .header-content { align-items: flex-start; } h1 { font-size: 1.15rem; } .row .btn { width: 100%; justify-content: center; } .auth-card { padding: 32px 22px; } }
+        @media (max-width: 600px) { main { margin-top: 18px; padding: 0 12px; } .card { padding: 18px; border-radius: 18px; } .header-content { align-items: flex-start; } h1 { font-size: 1.15rem; } .row .btn { width: 100%; justify-content: center; } .auth-card { padding: 32px 22px; } .field-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -82,7 +91,7 @@
             </div>
         </header>
         <main>
-            <div class="card">
+            <div class="card" id="garden-form-card">
                 <div class="label">מה תרצה לתעד היום?</div>
                 <div class="row">
                     <div style="font-size: 0.8rem; color: #475569; font-weight: 600;" id="active-label">גן נבחר: גן 1</div>
@@ -111,7 +120,31 @@
             </div>
             <div id="tabs-container" class="tabs-container"></div>
 
-            <div class="card" style="margin-top: 20px;">
+            <div class="card" id="work-report-card" style="display: none; margin-top: 20px;">
+                <div class="label">דוח שעות חודשי</div>
+                <div class="field-grid">
+                    <label class="field"><span>תאריך</span><input type="date" id="work-date"></label>
+                    <label class="field"><span>חודש לדוח</span><input type="month" id="work-month"></label>
+                    <label class="field"><span>שעת כניסה</span><input type="time" id="work-entry-time"></label>
+                    <label class="field"><span>שעת יציאה</span><input type="time" id="work-exit-time"></label>
+                    <label class="field" style="grid-column: 1 / -1;"><span>שם גן / שמות גנים</span><input type="text" id="work-gardens" placeholder="לדוגמה: גן שקד, גן רימון"></label>
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <textarea id="work-comment" rows="3" placeholder="הערה לדוח"></textarea>
+                </div>
+                <div class="row" style="justify-content: flex-end; margin-bottom: 18px;">
+                    <div id="work-status-text" class="status-msg">✓ שורת הדוח נשמרה!</div>
+                    <button id="save-work-btn" class="btn" onclick="saveWorkReportEntry()">שמור שורת דוח</button>
+                </div>
+                <div class="row" style="border-top: 1px solid var(--line); padding-top: 16px;">
+                    <div class="drive-template-note">האפליקציה תחפש בדרייב קובץ בשם דוח נוכחות.docx ותיצור עותק חודשי חדש לידו.</div>
+                    <button id="generate-work-btn" class="btn" onclick="generateWorkReportDocx()">צור דוח Word בדרייב</button>
+                </div>
+                <div id="work-summary" class="report-summary"></div>
+                <div id="work-entries-list" style="margin-top: 14px;"></div>
+            </div>
+
+            <div class="card" id="garden-history-card" style="margin-top: 20px;">
                 <div class="row" style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 12px;">
                     <div>
                         <h2 id="current-title" style="font-size: 1.1rem; font-weight: 700;">גן 1</h2>
@@ -128,13 +161,17 @@
 
     <script>
         const CLIENT_ID = '265026579540-ahc7t8fnaqnjj0q4pcpbg9f3fh6i8q98.apps.googleusercontent.com';
+        const REPORT_SHEET_NAME = 'דוח שעות';
+        const WORD_TEMPLATE_NAME = 'דוח נוכחות.docx';
+        const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file';
         
         let tokenClient;
         let accessToken = localStorage.getItem('yoman_access_token') || null;
         let spreadsheetId = localStorage.getItem('yoman_sheet_id') || null;
 
-        let appData = { kindergartens: [], entries: {} };
+        let appData = { kindergartens: [], entries: {}, workReports: [] };
         let activeTab = 0;
+        let activeView = 'garden';
         let recognition = null;
         let isRecording = false;
         let tokenRequestPromise = null;
@@ -143,6 +180,13 @@
         let editingEntry = null;
 
         document.getElementById('entry-date').valueAsDate = new Date();
+        document.getElementById('work-date').valueAsDate = new Date();
+        document.getElementById('work-month').value = getMonthValue(new Date());
+
+        if (localStorage.getItem('yoman_google_scope') !== GOOGLE_SCOPE) {
+            accessToken = null;
+            localStorage.removeItem('yoman_access_token');
+        }
 
         window.onload = function () {
             initGsi();
@@ -155,7 +199,7 @@
             if(typeof google === 'undefined') return;
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
-                scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly',
+                scope: GOOGLE_SCOPE,
                 callback: (response) => {
                     const handlers = tokenRequestHandlers;
                     tokenRequestHandlers = null;
@@ -166,6 +210,7 @@
                     }
                     accessToken = response.access_token;
                     localStorage.setItem('yoman_access_token', accessToken);
+                    localStorage.setItem('yoman_google_scope', GOOGLE_SCOPE);
                     handlers?.resolve(accessToken);
                 },
             });
@@ -224,6 +269,7 @@
             spreadsheetId = null;
             localStorage.removeItem('yoman_access_token');
             localStorage.removeItem('yoman_sheet_id');
+            localStorage.removeItem('yoman_google_scope');
             document.getElementById('app-screen').style.display = 'none';
             document.getElementById('auth-screen').style.display = 'flex';
         }
@@ -304,12 +350,15 @@
             if (!spreadsheetId || !accessToken) return;
             const metaRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
             const sheetMeta = await requireGoogleSuccess(metaRes, 'שגיאה בטעינת מבנה הגיליון');
-            const newKgs = sheetMeta.sheets.map(sheet => sheet.properties.title);
+            const sheetNames = sheetMeta.sheets.map(sheet => sheet.properties.title);
+            const newKgs = sheetNames.filter(name => name !== REPORT_SHEET_NAME);
             if (newKgs.length === 0) throw new Error('לא נמצאו גנים בחוברת.');
 
             const params = new URLSearchParams();
             params.set('majorDimension', 'ROWS');
             newKgs.forEach(name => params.append('ranges', `'${name.replace(/'/g, "''")}'!A:C`));
+            const hasReportSheet = sheetNames.includes(REPORT_SHEET_NAME);
+            if (hasReportSheet) params.append('ranges', `'${REPORT_SHEET_NAME}'!A:G`);
             const valuesRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${params}`);
             const valuesData = await requireGoogleSuccess(valuesRes, 'שגיאה בטעינת הדיווחים');
             const newEntries = {};
@@ -322,8 +371,24 @@
                     .map(item => ({ date: item.row[0], text: item.row[1] || '', timestamp: item.row[2] || '', rowNumber: item.rowNumber }));
             });
 
+            const reportRows = hasReportSheet ? (valuesData.valueRanges[newKgs.length]?.values || []) : [];
+            const newWorkReports = reportRows.slice(1)
+                .map((row, rowIndex) => ({ row, rowNumber: rowIndex + 2 }))
+                .filter(item => item.row[0])
+                .map(item => ({
+                    date: item.row[0],
+                    entryTime: item.row[1] || '',
+                    exitTime: item.row[2] || '',
+                    gardenNames: item.row[3] || '',
+                    comment: item.row[4] || '',
+                    duration: item.row[5] || '',
+                    minutes: Number(item.row[6] || 0),
+                    rowNumber: item.rowNumber
+                }));
+
             appData.kindergartens = newKgs;
             appData.entries = newEntries;
+            appData.workReports = newWorkReports;
             document.getElementById('auth-screen').style.display = 'none';
             document.getElementById('app-screen').style.display = 'block';
             render();
@@ -357,6 +422,21 @@
             }
         }
 
+        async function ensureReportSheet() {
+            const metaRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
+            const meta = await requireGoogleSuccess(metaRes, 'שגיאה באיתור גיליון הדוח');
+            const exists = meta.sheets.some(sheet => sheet.properties.title === REPORT_SHEET_NAME);
+            if (exists) return;
+
+            const addRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requests: [{ addSheet: { properties: { title: REPORT_SHEET_NAME } } }] })
+            });
+            await requireGoogleSuccess(addRes, 'שגיאה ביצירת גיליון הדוח');
+            await appendRowToSheet(REPORT_SHEET_NAME, ['תאריך', 'שעת כניסה', 'שעת יציאה', 'שמות גנים', 'הערה', 'משך', 'דקות']);
+        }
+
         async function requireGoogleSuccess(res, fallbackMessage) {
             const data = await res.json();
             if (!res.ok) {
@@ -378,7 +458,7 @@
 
         function setWriteInProgress(isBusy) {
             writeInProgress = isBusy;
-            ['save-btn', 'add-btn', 'rename-btn', 'delete-btn'].forEach(id => {
+            ['save-btn', 'add-btn', 'rename-btn', 'delete-btn', 'save-work-btn', 'generate-work-btn'].forEach(id => {
                 const button = document.getElementById(id);
                 if (button) button.disabled = isBusy;
             });
@@ -408,11 +488,26 @@
 
             appData.kindergartens.forEach((name, idx) => {
                 const btn = document.createElement('button');
-                btn.className = `tab-btn ${idx === activeTab ? 'active' : ''}`;
+                btn.className = `tab-btn ${activeView === 'garden' && idx === activeTab ? 'active' : ''}`;
                 btn.innerText = name;
-                btn.onclick = () => { activeTab = idx; render(); };
+                btn.onclick = () => { activeView = 'garden'; activeTab = idx; render(); };
                 container.appendChild(btn);
             });
+
+            const reportBtn = document.createElement('button');
+            reportBtn.className = `tab-btn ${activeView === 'work-report' ? 'active' : ''}`;
+            reportBtn.innerText = 'דוח שעות';
+            reportBtn.onclick = () => { activeView = 'work-report'; render(); };
+            container.appendChild(reportBtn);
+
+            document.getElementById('garden-form-card').style.display = activeView === 'garden' ? 'block' : 'none';
+            document.getElementById('garden-history-card').style.display = activeView === 'garden' ? 'block' : 'none';
+            document.getElementById('work-report-card').style.display = activeView === 'work-report' ? 'block' : 'none';
+
+            if (activeView === 'work-report') {
+                renderWorkReports();
+                return;
+            }
 
             document.getElementById('current-title').innerText = activeName;
             document.getElementById('active-label').innerText = `גן נבחר: ${activeName}`;
@@ -647,6 +742,213 @@
                     setWriteInProgress(false);
                 }
             }
+        }
+
+        function getMonthValue(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            return `${year}-${month}`;
+        }
+
+        function getHebrewMonthName(monthValue) {
+            const months = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+            const monthIndex = Number(monthValue.split('-')[1]) - 1;
+            return months[monthIndex] || '';
+        }
+
+        function getDurationMinutes(entryTime, exitTime) {
+            const [entryHours, entryMinutes] = entryTime.split(':').map(Number);
+            const [exitHours, exitMinutes] = exitTime.split(':').map(Number);
+            let minutes = (exitHours * 60 + exitMinutes) - (entryHours * 60 + entryMinutes);
+            if (minutes < 0) minutes += 24 * 60;
+            return minutes;
+        }
+
+        function formatDuration(minutes) {
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            return `${hours}:${String(remainingMinutes).padStart(2, '0')}`;
+        }
+
+        function getFilteredWorkReports() {
+            const month = document.getElementById('work-month').value || getMonthValue(new Date());
+            return appData.workReports
+                .filter(entry => entry.date && entry.date.startsWith(month))
+                .sort((a, b) => a.date.localeCompare(b.date) || a.entryTime.localeCompare(b.entryTime));
+        }
+
+        function renderWorkReports() {
+            const list = document.getElementById('work-entries-list');
+            const summary = document.getElementById('work-summary');
+            list.innerHTML = '';
+            const entries = getFilteredWorkReports();
+            const totalMinutes = entries.reduce((sum, entry) => sum + Number(entry.minutes || 0), 0);
+            const gardenSet = new Set();
+            entries.forEach(entry => entry.gardenNames.split(',').map(name => name.trim()).filter(Boolean).forEach(name => gardenSet.add(name)));
+            summary.innerHTML = `
+                <span class="badge">${entries.length} שורות</span>
+                <span class="badge">סה״כ ${escapeHtml(formatDuration(totalMinutes))} שעות</span>
+                <span class="badge">${gardenSet.size} גנים</span>
+            `;
+
+            if (entries.length === 0) {
+                const emptyState = document.createElement('div');
+                emptyState.style.cssText = 'text-align: center; color: #94a3b8; padding: 24px 0; font-size: 0.85rem;';
+                emptyState.textContent = 'אין שורות דוח לחודש שנבחר.';
+                list.appendChild(emptyState);
+                return;
+            }
+
+            entries.slice().reverse().forEach(entry => {
+                const div = document.createElement('div');
+                div.className = 'entry-card';
+                div.innerHTML = `
+                    <div class="entry-header">
+                        <span class="badge">${escapeHtml(formatHebrewDate(entry.date))} · ${escapeHtml(entry.entryTime)}-${escapeHtml(entry.exitTime)} · ${escapeHtml(entry.duration)}</span>
+                    </div>
+                    <div style="font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap;"><strong>${escapeHtml(entry.gardenNames)}</strong><br>${escapeHtml(entry.comment)}</div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        async function saveWorkReportEntry() {
+            const date = document.getElementById('work-date').value;
+            const entryTime = document.getElementById('work-entry-time').value;
+            const exitTime = document.getElementById('work-exit-time').value;
+            const gardenNames = document.getElementById('work-gardens').value.trim();
+            const comment = document.getElementById('work-comment').value.trim();
+
+            if (!date) { alert('נא לבחור תאריך.'); return; }
+            if (!entryTime || !exitTime) { alert('נא להזין שעת כניסה ושעת יציאה.'); return; }
+            if (!gardenNames) { alert('נא להזין שם גן אחד לפחות.'); return; }
+            if (writeInProgress) return;
+
+            const minutes = getDurationMinutes(entryTime, exitTime);
+            const duration = formatDuration(minutes);
+            const rowData = [date, entryTime, exitTime, gardenNames, comment, duration, String(minutes)];
+
+            setWriteInProgress(true);
+            document.getElementById('sync-status').innerText = 'שומר דוח שעות...';
+            try {
+                await ensureReportSheet();
+                await appendRowToSheet(REPORT_SHEET_NAME, rowData);
+                const lastRowNumber = appData.workReports.reduce((max, entry) => Math.max(max, entry.rowNumber || 1), 1);
+                appData.workReports.push({ date, entryTime, exitTime, gardenNames, comment, duration, minutes, rowNumber: lastRowNumber + 1 });
+                document.getElementById('work-month').value = date.slice(0, 7);
+                renderWorkReports();
+                document.getElementById('sync-status').innerText = 'מסונכרן ל-Google Sheets ✓';
+            } catch (err) {
+                document.getElementById('sync-status').innerText = 'שגיאת סנכרון';
+                alert('שמירת הדוח נכשלה: ' + err.message);
+                return;
+            } finally {
+                setWriteInProgress(false);
+            }
+
+            const msg = document.getElementById('work-status-text');
+            msg.style.display = 'block';
+            setTimeout(() => msg.style.display = 'none', 3000);
+            document.getElementById('work-comment').value = '';
+        }
+
+        async function generateWorkReportDocx() {
+            const entries = getFilteredWorkReports();
+            const monthValue = document.getElementById('work-month').value;
+            if (!monthValue) { alert('נא לבחור חודש לדוח.'); return; }
+            if (entries.length === 0) { alert('אין שורות דוח לחודש שנבחר.'); return; }
+            if (!window.PizZip || !window.docxtemplater) {
+                alert('ספריות יצירת ה-Word עדיין לא נטענו. נסה שוב בעוד רגע.');
+                return;
+            }
+
+            const generateButton = document.getElementById('generate-work-btn');
+            generateButton.disabled = true;
+            document.getElementById('sync-status').innerText = 'יוצר דוח Word בדרייב...';
+            try {
+                const totalMinutes = entries.reduce((sum, entry) => sum + Number(entry.minutes || 0), 0);
+                const gardens = Array.from(new Set(entries.flatMap(entry => entry.gardenNames.split(',').map(name => name.trim()).filter(Boolean))));
+                const [year, month] = monthValue.split('-');
+                const templateFile = await findDriveTemplateFile();
+                const templateBuffer = await downloadDriveFile(templateFile.id);
+                const zip = new PizZip(templateBuffer);
+                const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+
+                doc.render({
+                    reportMonth: `${getHebrewMonthName(monthValue)} ${year}`,
+                    monthName: getHebrewMonthName(monthValue),
+                    month,
+                    year,
+                    generatedAt: new Date().toLocaleDateString('he-IL'),
+                    gardens: gardens.join(', '),
+                    totalHours: formatDuration(totalMinutes),
+                    totalHoursDecimal: (totalMinutes / 60).toFixed(2),
+                    entries: entries.map((entry, index) => ({
+                        index: index + 1,
+                        date: formatHebrewDate(entry.date),
+                        rawDate: entry.date,
+                        entryTime: entry.entryTime,
+                        exitTime: entry.exitTime,
+                        duration: entry.duration,
+                        gardenNames: entry.gardenNames,
+                        comment: entry.comment
+                    }))
+                });
+
+                const blob = doc.getZip().generate({
+                    type: 'blob',
+                    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                });
+                const reportName = `דוח נוכחות ${getHebrewMonthName(monthValue)} ${year}.docx`;
+                const uploadedFile = await uploadDriveDocx(reportName, blob, templateFile.parents?.[0]);
+                document.getElementById('sync-status').innerText = 'מסונכרן ל-Google Sheets ✓';
+                alert(`הדוח נוצר בדרייב בשם ${reportName}`);
+                if (uploadedFile.webViewLink) window.open(uploadedFile.webViewLink, '_blank');
+            } catch (err) {
+                console.error(err);
+                document.getElementById('sync-status').innerText = 'שגיאה ביצירת הדוח';
+                alert(err.message || 'יצירת הדוח נכשלה.');
+            } finally {
+                generateButton.disabled = false;
+            }
+        }
+
+        async function findDriveTemplateFile() {
+            const query = encodeURIComponent(`name='${WORD_TEMPLATE_NAME.replace(/'/g, "\\'")}' and trashed=false`);
+            const fields = encodeURIComponent('files(id,name,parents,modifiedTime)');
+            const res = await googleFetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=modifiedTime desc&pageSize=1`);
+            const data = await requireGoogleSuccess(res, 'שגיאה בחיפוש תבנית הדוח בדרייב');
+            if (!data.files || data.files.length === 0) {
+                throw new Error(`לא נמצא בדרייב קובץ בשם ${WORD_TEMPLATE_NAME}. העלה אותו ל-Google Drive ונסה שוב.`);
+            }
+            return data.files[0];
+        }
+
+        async function downloadDriveFile(fileId) {
+            const res = await googleFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+            if (!res.ok) {
+                const message = await res.text();
+                throw new Error(message || 'הורדת תבנית הדוח מדרייב נכשלה.');
+            }
+            return res.arrayBuffer();
+        }
+
+        async function uploadDriveDocx(fileName, blob, parentId) {
+            const boundary = 'yoman_docx_boundary_' + Date.now();
+            const metadata = { name: fileName, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
+            if (parentId) metadata.parents = [parentId];
+            const body = new Blob([
+                `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
+                `--${boundary}\r\nContent-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\n`,
+                blob,
+                `\r\n--${boundary}--`
+            ]);
+            const res = await googleFetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink`, {
+                method: 'POST',
+                headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+                body
+            });
+            return requireGoogleSuccess(res, 'העלאת הדוח החדש לדרייב נכשלה');
         }
 
         function showMicNotice(message) {
