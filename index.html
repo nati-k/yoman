@@ -37,6 +37,7 @@
         button:disabled { cursor: wait; opacity: .58; transform: none !important; box-shadow: none !important; }
         .btn-secondary { background: white; color: var(--muted); border: 1px solid var(--line); padding: 9px 13px; border-radius: 11px; font-size: .8rem; font-weight: 800; cursor: pointer; transition: background .2s, color .2s; }
         .btn-secondary:hover { color: var(--primary); background: var(--surface-soft); }
+        .btn-cancel { display: none; }
         .btn-mic { background: white; color: var(--muted); border: 1px solid var(--line); padding: 10px 14px; border-radius: 12px; cursor: pointer; font-size: .9rem; display: flex; align-items: center; gap: 6px; font-weight: 800; }
         .btn-mic.recording { background: var(--danger); color: white; border-color: var(--danger); animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
@@ -96,6 +97,7 @@
                 </div>
                 <div class="row" style="justify-content: flex-end; margin-bottom: 0;">
                     <div id="status-text" class="status-msg">✓ נשמר ונשלח לגוגל שיטס!</div>
+                    <button id="cancel-edit-btn" class="btn-secondary btn-cancel" onclick="cancelEdit()">ביטול עריכה</button>
                     <button id="save-btn" class="btn" onclick="saveEntry()">שמור עדכון</button>
                 </div>
             </div>
@@ -138,6 +140,7 @@
         let tokenRequestPromise = null;
         let tokenRequestHandlers = null;
         let writeInProgress = false;
+        let editingEntry = null;
 
         document.getElementById('entry-date').valueAsDate = new Date();
 
@@ -314,8 +317,9 @@
             newKgs.forEach((title, index) => {
                 const rows = valuesData.valueRanges[index]?.values || [];
                 newEntries[title] = rows.slice(1)
-                    .filter(row => row[0])
-                    .map(row => ({ date: row[0], text: row[1] || '', timestamp: row[2] || '' }));
+                    .map((row, rowIndex) => ({ row, rowNumber: rowIndex + 2 }))
+                    .filter(item => item.row[0])
+                    .map(item => ({ date: item.row[0], text: item.row[1] || '', timestamp: item.row[2] || '', rowNumber: item.rowNumber }));
             });
 
             appData.kindergartens = newKgs;
@@ -336,6 +340,20 @@
             const data = await res.json();
             if (!res.ok) {
                 throw new Error(data.error ? data.error.message : 'שגיאה בשמירת הנתונים');
+            }
+        }
+
+        async function updateRowInSheet(sheetName, rowNumber, rowData) {
+            if (!spreadsheetId || !accessToken) return;
+            const range = `'${sheetName.replace(/'/g, "''")}'!A${rowNumber}:C${rowNumber}`;
+            const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ range, majorDimension: 'ROWS', values: [rowData] })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error ? data.error.message : 'שגיאה בעדכון הנתונים');
             }
         }
 
@@ -417,9 +435,11 @@
                 div.innerHTML = `
                     <div class="entry-header">
                         <span class="badge">${escapeHtml(formatHebrewDate(e.date))} (${escapeHtml(e.timestamp || '')})</span>
+                        <button class="btn-secondary" type="button">עריכה</button>
                     </div>
                     <div style="font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(e.text)}</div>
                 `;
+                div.querySelector('button').onclick = () => editEntry(e);
                 list.appendChild(div);
             });
         }
@@ -464,18 +484,29 @@
             if(!date) { alert('נא לבחור תאריך.'); return; }
             if (writeInProgress) return;
 
-            detectAndSwitch(text);
+            if (!editingEntry) detectAndSwitch(text);
             const activeName = appData.kindergartens[activeTab];
 
             if(!appData.entries[activeName]) appData.entries[activeName] = [];
-            const timeStr = new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+            const timeStr = editingEntry?.timestamp || new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
             const newEntry = { date: date, text: text, timestamp: timeStr };
             
             setWriteInProgress(true);
             document.getElementById('sync-status').innerText = "שומר לגוגל שיטס...";
             try {
-                await appendRowToSheet(activeName, [date, text, timeStr]);
-                appData.entries[activeName].push(newEntry);
+                if (editingEntry) {
+                    await updateRowInSheet(activeName, editingEntry.rowNumber, [date, text, timeStr]);
+                    editingEntry.date = date;
+                    editingEntry.text = text;
+                    editingEntry.timestamp = timeStr;
+                } else {
+                    await appendRowToSheet(activeName, [date, text, timeStr]);
+                    const existingEntries = appData.entries[activeName];
+                    const lastRowNumber = existingEntries.reduce((max, entry) => Math.max(max, entry.rowNumber || 1), 1);
+                    existingEntries.push({ ...newEntry, rowNumber: lastRowNumber + 1 });
+                }
+                editingEntry = null;
+                updateEditControls();
                 render();
                 document.getElementById('sync-status').innerText = "מסונכרן ל-Google Sheets ✓";
             } catch (err) {
@@ -490,6 +521,29 @@
             msg.style.display = 'block';
             setTimeout(() => msg.style.display = 'none', 3000);
             textEl.value = '';
+        }
+
+        function editEntry(entry) {
+            editingEntry = entry;
+            document.getElementById('entry-date').value = entry.date;
+            document.getElementById('entry-text').value = entry.text;
+            updateEditControls();
+            document.getElementById('entry-text').focus();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function cancelEdit() {
+            editingEntry = null;
+            document.getElementById('entry-text').value = '';
+            document.getElementById('entry-date').valueAsDate = new Date();
+            updateEditControls();
+        }
+
+        function updateEditControls() {
+            const saveButton = document.getElementById('save-btn');
+            const cancelButton = document.getElementById('cancel-edit-btn');
+            saveButton.innerText = editingEntry ? 'עדכן דיווח' : 'שמור עדכון';
+            cancelButton.style.display = editingEntry ? 'inline-block' : 'none';
         }
 
         async function addKindergarten() {
