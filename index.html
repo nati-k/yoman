@@ -46,6 +46,7 @@
         .tab-btn:hover { transform: translateY(-2px); }
         .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 8px 18px rgba(15,118,110,.22); }
         .entry-card { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin-bottom: 12px; position: relative; animation: rise .35s ease both; }
+        .attendance-command { min-height: 92px; }
         .entry-header { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); margin-bottom: 10px; border-bottom: 1px solid var(--line); padding-bottom: 9px; }
         .badge { background: var(--primary-soft); color: var(--primary-dark); padding: 5px 9px; border-radius: 8px; font-weight: 800; }
         .status-msg { font-size: .82rem; color: var(--primary); font-weight: 800; margin-inline-end: auto; display: none; }
@@ -111,7 +112,19 @@
             </div>
             <div id="tabs-container" class="tabs-container"></div>
 
-            <div class="card" style="margin-top: 20px;">
+            <div class="card" id="attendance-card" style="display: none; margin-top: 20px;">
+                <div class="label">דוח נוכחות</div>
+                <div style="font-size: .84rem; color: var(--muted); line-height: 1.6; margin-bottom: 12px;">כתוב שורה אחת. לדוגמה: 17/9 08:00-13:30 גן שקד - פיתוח תכנים, מעטפת מקצועית</div>
+                <textarea id="attendance-command" class="attendance-command" rows="2" placeholder="גן שקד - פיתוח תכנים, מעטפת מקצועית 08:00-13:30"></textarea>
+                <div class="row" style="justify-content: flex-end; margin-top: 12px; margin-bottom: 18px;">
+                    <div id="attendance-status" class="status-msg">✓ הרשומה נשמרה!</div>
+                    <button id="attendance-cancel-btn" class="btn-secondary btn-cancel" onclick="cancelAttendanceEdit()">ביטול עריכה</button>
+                    <button id="attendance-save-btn" class="btn" onclick="saveAttendanceEntry()">שמור רשומה</button>
+                </div>
+                <div id="attendance-list"></div>
+            </div>
+
+            <div class="card" id="garden-history-card" style="margin-top: 20px;">
                 <div class="row" style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 12px;">
                     <div>
                         <h2 id="current-title" style="font-size: 1.1rem; font-weight: 700;">גן 1</h2>
@@ -133,14 +146,19 @@
         let accessToken = localStorage.getItem('yoman_access_token') || null;
         let spreadsheetId = localStorage.getItem('yoman_sheet_id') || null;
 
-        let appData = { kindergartens: [], entries: {} };
+        const ATTENDANCE_SHEET_NAME = 'דוח נוכחות';
+        const ATTENDANCE_CATEGORIES = ['פיתוח תכנים', 'מעטפת מקצועית', 'ממשקים וניהול', 'מילוי טפסים'];
+
+        let appData = { kindergartens: [], entries: {}, attendance: [] };
         let activeTab = 0;
+        let activeView = 'garden';
         let recognition = null;
         let isRecording = false;
         let tokenRequestPromise = null;
         let tokenRequestHandlers = null;
         let writeInProgress = false;
         let editingEntry = null;
+        let editingAttendance = null;
 
         document.getElementById('entry-date').valueAsDate = new Date();
 
@@ -304,12 +322,15 @@
             if (!spreadsheetId || !accessToken) return;
             const metaRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
             const sheetMeta = await requireGoogleSuccess(metaRes, 'שגיאה בטעינת מבנה הגיליון');
-            const newKgs = sheetMeta.sheets.map(sheet => sheet.properties.title);
+            const sheetNames = sheetMeta.sheets.map(sheet => sheet.properties.title);
+            const newKgs = sheetNames.filter(name => name !== ATTENDANCE_SHEET_NAME);
             if (newKgs.length === 0) throw new Error('לא נמצאו גנים בחוברת.');
 
             const params = new URLSearchParams();
             params.set('majorDimension', 'ROWS');
             newKgs.forEach(name => params.append('ranges', `'${name.replace(/'/g, "''")}'!A:D`));
+            const hasAttendanceSheet = sheetNames.includes(ATTENDANCE_SHEET_NAME);
+            if (hasAttendanceSheet) params.append('ranges', `'${ATTENDANCE_SHEET_NAME}'!A:F`);
             const valuesRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${params}`);
             const valuesData = await requireGoogleSuccess(valuesRes, 'שגיאה בטעינת הדיווחים');
             const newEntries = {};
@@ -322,8 +343,23 @@
                         .map(item => ({ date: item.row[0], text: item.row[1] || '', timestamp: item.row[2] || '', reported: item.row[3] === 'כן' || item.row[3] === 'TRUE', rowNumber: item.rowNumber }));
             });
 
+            const attendanceRows = hasAttendanceSheet ? (valuesData.valueRanges[newKgs.length]?.values || []) : [];
+            const attendance = attendanceRows.slice(1)
+                .map((row, rowIndex) => ({ row, rowNumber: rowIndex + 2 }))
+                .filter(item => item.row.some(Boolean))
+                .map(item => ({
+                    date: item.row[0] || '',
+                    entryTime: item.row[1] || '',
+                    exitTime: item.row[2] || '',
+                    garden: item.row[3] || '',
+                    extras: item.row[4] || '',
+                    reported: item.row[5] === 'כן' || item.row[5] === 'TRUE',
+                    rowNumber: item.rowNumber
+                }));
+
             appData.kindergartens = newKgs;
             appData.entries = newEntries;
+            appData.attendance = attendance;
             document.getElementById('auth-screen').style.display = 'none';
             document.getElementById('app-screen').style.display = 'block';
             render();
@@ -378,7 +414,7 @@
 
         function setWriteInProgress(isBusy) {
             writeInProgress = isBusy;
-            ['save-btn', 'add-btn', 'rename-btn', 'delete-btn'].forEach(id => {
+            ['save-btn', 'add-btn', 'rename-btn', 'delete-btn', 'attendance-save-btn', 'attendance-cancel-btn'].forEach(id => {
                 const button = document.getElementById(id);
                 if (button) button.disabled = isBusy;
             });
@@ -399,6 +435,159 @@
             return dateStr;
         }
 
+        function normalizeAttendanceTime(value) {
+            if (!value) return '';
+            const match = value.match(/^(\d{1,2})(?::?(\d{2}))?$/);
+            if (!match) return null;
+            const hours = Number(match[1]);
+            const minutes = Number(match[2] || 0);
+            if (hours > 23 || minutes > 59) return null;
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+        }
+
+        function parseAttendanceCommand(rawText) {
+            const text = rawText.trim().replace(/\s+/g, ' ');
+            const today = new Date();
+            const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+            const dateMatch = text.match(/(^|\s)(\d{1,2}(?:[./-]\d{1,2})?(?:[./-]\d{2,4})?)(?=\s|$)/);
+            const date = dateMatch ? normalizeAttendanceDate(dateMatch[2], defaultDate) : defaultDate;
+            if (!date) throw new Error('התאריך שהוזן אינו תקין.');
+
+            const timeMatch = text.match(/(\d{1,2}:?\d{0,2})\s*(?:-|–|—|עד|to)\s*(\d{1,2}:?\d{0,2})/i);
+            const entryTime = timeMatch ? normalizeAttendanceTime(timeMatch[1]) : '';
+            const exitTime = timeMatch ? normalizeAttendanceTime(timeMatch[2]) : '';
+            if (timeMatch && (!entryTime || !exitTime)) throw new Error('השעות שהוזנו אינן תקינות.');
+
+            let rest = text;
+            if (dateMatch) rest = rest.replace(dateMatch[2], ' ');
+            if (timeMatch) rest = rest.replace(timeMatch[0], ' ');
+            rest = rest.trim();
+            const separator = rest.match(/\s(?:-|–|—|:|;|\|)\s/);
+            const gardenText = separator ? rest.slice(0, separator.index).trim() : rest;
+            const extrasText = separator ? rest.slice(separator.index + separator[0].length).trim() : '';
+            const garden = appData.kindergartens.find(name => gardenText === name) || appData.kindergartens.find(name => rest.includes(name));
+            if (!garden) throw new Error('לא מצאתי גן מוכר בשורה. השתמש בשם של אחד הגנים הקיימים.');
+
+            const extras = extrasText.split(',').map(value => value.trim()).filter(Boolean);
+            const invalidExtras = extras.filter(value => !ATTENDANCE_CATEGORIES.includes(value));
+            if (invalidExtras.length) throw new Error(`האפשרות אינה מוכרת: ${invalidExtras.join(', ')}. האפשרויות הן: ${ATTENDANCE_CATEGORIES.join(', ')}.`);
+            return { date, entryTime, exitTime, garden, extras: extras.join(', ') };
+        }
+
+        function normalizeAttendanceDate(value, defaultDate) {
+            const parts = value.replace(/\./g, '/').replace(/-/g, '/').split('/').map(Number);
+            const defaultParts = defaultDate.split('-').map(Number);
+            const day = parts[0];
+            const month = parts[1] || defaultParts[1];
+            let year = parts[2] || defaultParts[0];
+            if (year < 100) year += 2000;
+            if (!day || !month || day > 31 || month > 12) return null;
+            return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+
+        async function ensureAttendanceSheet() {
+            const metaRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
+            const meta = await requireGoogleSuccess(metaRes, 'שגיאה באיתור גיליון דוח הנוכחות');
+            if (meta.sheets.some(sheet => sheet.properties.title === ATTENDANCE_SHEET_NAME)) return;
+            const addRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requests: [{ addSheet: { properties: { title: ATTENDANCE_SHEET_NAME } } }] })
+            });
+            await requireGoogleSuccess(addRes, 'שגיאה ביצירת גיליון דוח הנוכחות');
+            await appendRowToSheet(ATTENDANCE_SHEET_NAME, ['יום', 'שעת כניסה', 'שעת יציאה', 'גן', 'נוספים - הערות', 'דווחה']);
+        }
+
+        async function updateAttendanceRow(entry, rowData) {
+            const range = `'${ATTENDANCE_SHEET_NAME}'!A${entry.rowNumber}:F${entry.rowNumber}`;
+            const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ range, majorDimension: 'ROWS', values: [rowData] })
+            });
+            await requireGoogleSuccess(res, 'שגיאה בעדכון רשומת הנוכחות');
+        }
+
+        async function saveAttendanceEntry() {
+            if (writeInProgress) return;
+            let parsed;
+            try { parsed = parseAttendanceCommand(document.getElementById('attendance-command').value); }
+            catch (err) { alert(err.message); return; }
+
+            const rowData = [parsed.date, parsed.entryTime, parsed.exitTime, parsed.garden, parsed.extras, editingAttendance?.reported ? 'כן' : 'לא'];
+            setWriteInProgress(true);
+            try {
+                await ensureAttendanceSheet();
+                if (editingAttendance) {
+                    await updateAttendanceRow(editingAttendance, rowData);
+                    Object.assign(editingAttendance, parsed);
+                } else {
+                    await appendRowToSheet(ATTENDANCE_SHEET_NAME, rowData);
+                    const rowNumber = appData.attendance.reduce((max, item) => Math.max(max, item.rowNumber || 1), 1) + 1;
+                    appData.attendance.push({ ...parsed, reported: false, rowNumber });
+                }
+                editingAttendance = null;
+                updateAttendanceEditControls();
+                document.getElementById('attendance-command').value = '';
+                renderAttendance();
+                document.getElementById('attendance-status').style.display = 'block';
+                setTimeout(() => document.getElementById('attendance-status').style.display = 'none', 3000);
+            } catch (err) {
+                alert('שמירת דוח הנוכחות נכשלה: ' + err.message);
+            } finally { setWriteInProgress(false); }
+        }
+
+        function attendanceCommandText(entry) {
+            const date = entry.date ? `${entry.date.split('-')[2]}/${entry.date.split('-')[1]}/${entry.date.split('-')[0]}` : '';
+            const times = entry.entryTime || entry.exitTime ? `${entry.entryTime || ''}-${entry.exitTime || ''}` : '';
+            return [date, times, entry.garden, entry.extras ? `- ${entry.extras}` : ''].filter(Boolean).join(' ');
+        }
+
+        function editAttendanceEntry(entry) {
+            editingAttendance = entry;
+            document.getElementById('attendance-command').value = attendanceCommandText(entry);
+            updateAttendanceEditControls();
+            document.getElementById('attendance-command').focus();
+        }
+
+        function cancelAttendanceEdit() {
+            editingAttendance = null;
+            document.getElementById('attendance-command').value = '';
+            updateAttendanceEditControls();
+        }
+
+        function updateAttendanceEditControls() {
+            document.getElementById('attendance-save-btn').innerText = editingAttendance ? 'עדכן רשומה' : 'שמור רשומה';
+            document.getElementById('attendance-cancel-btn').style.display = editingAttendance ? 'inline-block' : 'none';
+        }
+
+        async function toggleAttendanceReported(entry, reported) {
+            if (writeInProgress) return;
+            setWriteInProgress(true);
+            try {
+                await updateAttendanceRow(entry, [entry.date, entry.entryTime, entry.exitTime, entry.garden, entry.extras, reported ? 'כן' : 'לא']);
+                entry.reported = reported;
+                renderAttendance();
+            } catch (err) { alert('עדכון סטטוס הדיווח נכשל: ' + err.message); }
+            finally { setWriteInProgress(false); }
+        }
+
+        async function deleteAttendanceEntry(entry) {
+            if (writeInProgress || !confirm('למחוק את רשומת הנוכחות?')) return;
+            setWriteInProgress(true);
+            try {
+                const metaRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
+                const meta = await requireGoogleSuccess(metaRes, 'שגיאה באיתור גיליון דוח הנוכחות');
+                const sheet = meta.sheets.find(item => item.properties.title === ATTENDANCE_SHEET_NAME);
+                const deleteRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: entry.rowNumber - 1, endIndex: entry.rowNumber } } }] })
+                });
+                await requireGoogleSuccess(deleteRes, 'מחיקת רשומת הנוכחות נכשלה');
+                appData.attendance = appData.attendance.filter(item => item !== entry).map(item => item.rowNumber > entry.rowNumber ? { ...item, rowNumber: item.rowNumber - 1 } : item);
+                renderAttendance();
+            } catch (err) { alert('מחיקת רשומת הנוכחות נכשלה: ' + err.message); }
+            finally { setWriteInProgress(false); }
+        }
+
         function render() {
             const container = document.getElementById('tabs-container');
             container.innerHTML = '';
@@ -408,11 +597,27 @@
 
             appData.kindergartens.forEach((name, idx) => {
                 const btn = document.createElement('button');
-                btn.className = `tab-btn ${idx === activeTab ? 'active' : ''}`;
+                btn.className = `tab-btn ${activeView === 'garden' && idx === activeTab ? 'active' : ''}`;
                 btn.innerText = name;
-                btn.onclick = () => { activeTab = idx; render(); };
+                btn.onclick = () => { activeView = 'garden'; activeTab = idx; render(); };
                 container.appendChild(btn);
             });
+
+            const attendanceTab = document.createElement('button');
+            attendanceTab.className = `tab-btn ${activeView === 'attendance' ? 'active' : ''}`;
+            attendanceTab.innerText = 'דוח נוכחות';
+            attendanceTab.onclick = () => { activeView = 'attendance'; render(); };
+            container.appendChild(attendanceTab);
+
+            document.getElementById('attendance-card').style.display = activeView === 'attendance' ? 'block' : 'none';
+            document.getElementById('garden-history-card').style.display = activeView === 'garden' ? 'block' : 'none';
+            document.querySelector('main > .card:first-child').style.display = activeView === 'garden' ? 'block' : 'none';
+            document.getElementById('add-btn').parentElement.parentElement.style.display = activeView === 'garden' ? 'flex' : 'none';
+
+            if (activeView === 'attendance') {
+                renderAttendance();
+                return;
+            }
 
             document.getElementById('current-title').innerText = activeName;
             document.getElementById('active-label').innerText = `גן נבחר: ${activeName}`;
@@ -450,6 +655,41 @@
                 buttons[0].onclick = () => editEntry(e);
                 buttons[1].onclick = () => deleteEntry(activeName, e);
                 div.querySelector('input').onchange = event => toggleEntryReported(activeName, e, event.target.checked);
+                list.appendChild(div);
+            });
+        }
+
+        function renderAttendance() {
+            const list = document.getElementById('attendance-list');
+            list.innerHTML = '';
+            if (appData.attendance.length === 0) {
+                const emptyState = document.createElement('div');
+                emptyState.style.cssText = 'text-align: center; color: #94a3b8; padding: 30px 0; font-size: .85rem;';
+                emptyState.textContent = 'אין רשומות נוכחות עדיין.';
+                list.appendChild(emptyState);
+                return;
+            }
+
+            appData.attendance.slice().reverse().forEach(entry => {
+                const div = document.createElement('div');
+                div.className = 'entry-card';
+                div.innerHTML = `
+                    <div class="entry-header">
+                        <span class="badge">${escapeHtml(formatHebrewDate(entry.date))} · ${escapeHtml(entry.entryTime || '--:--')}-${escapeHtml(entry.exitTime || '--:--')}</span>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <label class="btn-secondary" style="display:flex;align-items:center;gap:5px;color:${entry.reported ? 'var(--primary)' : 'var(--muted)'};">
+                                <input type="checkbox" ${entry.reported ? 'checked' : ''} aria-label="סומנה כדווחה"> דווחה
+                            </label>
+                            <button class="btn-secondary" type="button">עריכה</button>
+                            <button class="btn-secondary" type="button" style="color:var(--danger);">מחיקה</button>
+                        </div>
+                    </div>
+                    <div style="font-size:.9rem;line-height:1.6;"><strong>${escapeHtml(entry.garden)}</strong>${entry.extras ? `<br>${escapeHtml(entry.extras)}` : ''}</div>
+                `;
+                const buttons = div.querySelectorAll('button');
+                buttons[0].onclick = () => editAttendanceEntry(entry);
+                buttons[1].onclick = () => deleteAttendanceEntry(entry);
+                div.querySelector('input').onchange = event => toggleAttendanceReported(entry, event.target.checked);
                 list.appendChild(div);
             });
         }
