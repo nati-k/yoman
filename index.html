@@ -46,15 +46,17 @@
         .tab-btn:hover { transform: translateY(-2px); }
         .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 8px 18px rgba(15,118,110,.22); }
         .entry-card { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin-bottom: 12px; position: relative; animation: rise .35s ease both; }
+        #attendance-list .entry-card { border-radius: 12px; padding: 10px 12px; margin-bottom: 7px; }
         .attendance-command { min-height: 92px; }
-        .attendance-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
-        .attendance-field { display: flex; flex-direction: column; gap: 5px; font-size: .78rem; color: var(--muted); font-weight: 800; }
-        .attendance-field input, .attendance-field select { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; color: var(--text); background: white; font: inherit; }
-        .attendance-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-        .attendance-option { display: flex; align-items: center; gap: 7px; min-height: 40px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--text); font-size: .82rem; cursor: pointer; }
+        .attendance-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 8px; }
+        .attendance-field { display: flex; flex-direction: column; gap: 3px; font-size: .72rem; color: var(--muted); font-weight: 800; }
+        .attendance-field input, .attendance-field select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; color: var(--text); background: white; font: inherit; font-size: .82rem; }
+        .attendance-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+        .attendance-option { display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--text); font-size: .75rem; cursor: pointer; }
         .attendance-option:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-dark); }
         .attendance-option input { width: auto; }
         .attendance-inline-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
+        @media (max-width: 700px) { .attendance-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } .attendance-options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
         @media (max-width: 600px) { .attendance-fields { grid-template-columns: 1fr; } }
         .entry-header { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); margin-bottom: 10px; border-bottom: 1px solid var(--line); padding-bottom: 9px; }
         .badge { background: var(--primary-soft); color: var(--primary-dark); padding: 5px 9px; border-radius: 8px; font-weight: 800; }
@@ -105,6 +107,9 @@
                     <textarea id="entry-text" rows="3" placeholder="הקלד כאן או לחץ על המיקרופון (למשל: 'גן 3, ביקרנו היום במוקד חצר...')"></textarea>
                     <button id="mic-btn" class="btn-mic" onclick="toggleSpeech()" style="position: absolute; bottom: 12px; left: 12px;" title="הכתבה קולית">🎤 הקלטה</button>
                 </div>
+                <div class="row" style="margin-bottom: 12px;">
+                    <div class="attendance-field" style="max-width: 620px; width: 100%;"><span>פעילויות</span><div id="entry-activities" class="attendance-options"></div></div>
+                </div>
                 <div class="row" style="justify-content: flex-end; margin-bottom: 0;">
                     <div id="status-text" class="status-msg">✓ נשמר ונשלח לגוגל שיטס!</div>
                     <button id="cancel-edit-btn" class="btn-secondary btn-cancel" onclick="cancelEdit()">ביטול עריכה</button>
@@ -120,21 +125,6 @@
                 </div>
             </div>
             <div id="tabs-container" class="tabs-container"></div>
-
-            <div class="card" id="attendance-card" style="display: none; margin-top: 20px;">
-                <div class="label">דוח נוכחות</div>
-                <div style="font-size: .84rem; color: var(--muted); line-height: 1.6; margin-bottom: 12px;">כתוב שורה אחת. לדוגמה: 17/9 08:00-13:30 גן שקד - פיתוח תכנים, מעטפת מקצועית</div>
-                <div style="position: relative; margin-bottom: 12px;">
-                    <textarea id="attendance-command" class="attendance-command" rows="2" placeholder="גן שקד - פיתוח תכנים, מעטפת מקצועית 08:00-13:30"></textarea>
-                    <button id="attendance-mic-btn" class="btn-mic" onclick="toggleSpeech('attendance-command', 'attendance-mic-btn')" style="position: absolute; bottom: 12px; left: 12px;" title="הכתבה קולית">🎤 הקלטה</button>
-                </div>
-                <div class="row" style="justify-content: flex-end; margin-top: 12px; margin-bottom: 18px;">
-                    <div id="attendance-status" class="status-msg">✓ הרשומה נשמרה!</div>
-                    <button id="attendance-cancel-btn" class="btn-secondary btn-cancel" onclick="cancelAttendanceEdit()">ביטול עריכה</button>
-                    <button id="attendance-save-btn" class="btn" onclick="saveAttendanceEntry()">שמור רשומה</button>
-                </div>
-                <div id="attendance-list"></div>
-            </div>
 
             <div class="card" id="garden-history-card" style="margin-top: 20px;">
                 <div class="row" style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 12px;">
@@ -159,12 +149,20 @@
         let spreadsheetId = localStorage.getItem('yoman_sheet_id') || null;
 
         const ATTENDANCE_SHEET_NAME = 'דוח נוכחות';
-        const ATTENDANCE_CATEGORIES = ['פיתוח תכנים', 'מעטפת מקצועית', 'ממשקים וניהול', 'מילוי טפסים'];
+        const GENERAL_GARDEN_NAME = 'גן כללי';
+        const ATTENDANCE_CATEGORIES = ['מעטפת מקצועית', 'עבודה עם הורים וגמישות', 'מחלה / חופשה', 'מילוי טפסים', 'פיתוח תכנים', 'הכשרה ופיתוח צוותים', 'ממשקים וניהול'];
         const ATTENDANCE_CATEGORY_ALIASES = {
             'פיתוח': 'פיתוח תכנים',
             'מעטפת': 'מעטפת מקצועית',
             'ממשקים': 'ממשקים וניהול',
-            'מילוי': 'מילוי טפסים'
+            'מילוי': 'מילוי טפסים',
+            'הורים': 'עבודה עם הורים וגמישות',
+            'גמישות': 'עבודה עם הורים וגמישות',
+            'עבודה עם הורים': 'עבודה עם הורים וגמישות',
+            'מחלה': 'מחלה / חופשה',
+            'חופשה': 'מחלה / חופשה',
+            'הכשרה': 'הכשרה ופיתוח צוותים',
+            'צוותים': 'הכשרה ופיתוח צוותים'
         };
 
         let appData = { kindergartens: [], entries: {}, attendance: [] };
@@ -180,6 +178,7 @@
         let activeMicButtonId = 'mic-btn';
 
         document.getElementById('entry-date').valueAsDate = new Date();
+        document.getElementById('entry-activities').innerHTML = ATTENDANCE_CATEGORIES.map(activity => `<label class="attendance-option"><input type="checkbox" data-entry-activity="${escapeHtml(activity)}">${escapeHtml(activity)}</label>`).join('');
 
         window.onload = function () {
             initGsi();
@@ -332,8 +331,9 @@
             localStorage.setItem('yoman_sheet_id', spreadsheetId);
 
             for (let name of defaultKgs) {
-                await appendRowToSheet(name, ['תאריך', 'תוכן העדכון', 'שעת רישום', 'דווח']);
+                await appendRowToSheet(name, ['תאריך', 'תוכן העדכון', 'שעת רישום', 'דווח', 'פעילות']);
             }
+            await ensureAttendanceSheet();
             await loadFromSheetCloud();
         }
 
@@ -347,9 +347,9 @@
 
             const params = new URLSearchParams();
             params.set('majorDimension', 'ROWS');
-            newKgs.forEach(name => params.append('ranges', `'${name.replace(/'/g, "''")}'!A:D`));
+            newKgs.forEach(name => params.append('ranges', `'${name.replace(/'/g, "''")}'!A:E`));
             const hasAttendanceSheet = sheetNames.includes(ATTENDANCE_SHEET_NAME);
-            if (hasAttendanceSheet) params.append('ranges', `'${ATTENDANCE_SHEET_NAME}'!A:F`);
+            if (hasAttendanceSheet) params.append('ranges', `'${ATTENDANCE_SHEET_NAME}'!A:G`);
             const valuesRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${params}`);
             const valuesData = await requireGoogleSuccess(valuesRes, 'שגיאה בטעינת הדיווחים');
             const newEntries = {};
@@ -359,7 +359,7 @@
                 newEntries[title] = rows.slice(1)
                     .map((row, rowIndex) => ({ row, rowNumber: rowIndex + 2 }))
                     .filter(item => item.row[0])
-                        .map(item => ({ date: item.row[0], text: item.row[1] || '', timestamp: item.row[2] || '', reported: item.row[3] === 'כן' || item.row[3] === 'TRUE', rowNumber: item.rowNumber }));
+                        .map(item => ({ date: item.row[0], text: item.row[1] || '', timestamp: item.row[2] || '', reported: item.row[3] === 'כן' || item.row[3] === 'TRUE', activity: item.row[4] || '', rowNumber: item.rowNumber }));
             });
 
             const attendanceRows = hasAttendanceSheet ? (valuesData.valueRanges[newKgs.length]?.values || []) : [];
@@ -373,12 +373,19 @@
                     garden: item.row[3] || '',
                     extras: item.row[4] || '',
                     reported: item.row[5] === 'כן' || item.row[5] === 'TRUE',
+                    sourceKey: item.row[6] || '',
                     rowNumber: item.rowNumber
                 }));
 
             appData.kindergartens = newKgs;
             appData.entries = newEntries;
             appData.attendance = attendance;
+            newKgs.forEach(gardenName => {
+                (newEntries[gardenName] || []).forEach(entry => {
+                    const matchingAttendance = attendance.find(item => item.date === entry.date && item.garden === gardenName && item.extras === (entry.activity || ''));
+                    if (matchingAttendance) entry.sourceKey = matchingAttendance.sourceKey || '';
+                });
+            });
             document.getElementById('auth-screen').style.display = 'none';
             document.getElementById('app-screen').style.display = 'block';
             render();
@@ -400,7 +407,8 @@
 
         async function updateRowInSheet(sheetName, rowNumber, rowData) {
             if (!spreadsheetId || !accessToken) return;
-            const range = `'${sheetName.replace(/'/g, "''")}'!A${rowNumber}:D${rowNumber}`;
+            const endColumn = String.fromCharCode(64 + rowData.length);
+            const range = `'${sheetName.replace(/'/g, "''")}'!A${rowNumber}:${endColumn}${rowNumber}`;
             const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -485,7 +493,8 @@
             let extras = [...new Set(detectedExtras.map(category => ATTENDANCE_CATEGORY_ALIASES[category] || category))];
             detectedExtras.forEach(category => { rest = rest.replaceAll(category, ' '); });
             rest = rest.replace(/\s(?:-|–|—|:|;|\|)\s/g, ' ').replace(/[,.،؛]+/g, ' ').trim();
-            const garden = appData.kindergartens.find(name => rest.trim() === name) || appData.kindergartens.find(name => rest.includes(name));
+            const attendanceGardens = [GENERAL_GARDEN_NAME, ...appData.kindergartens];
+            const garden = attendanceGardens.find(name => rest.trim() === name) || attendanceGardens.find(name => rest.includes(name));
             if (!garden) throw new Error('לא מצאתי גן מוכר בשורה. השתמש בשם של אחד הגנים הקיימים.');
 
             return { date, entryTime, exitTime, garden, extras: extras.join(', ') };
@@ -511,16 +520,43 @@
                 body: JSON.stringify({ requests: [{ addSheet: { properties: { title: ATTENDANCE_SHEET_NAME } } }] })
             });
             await requireGoogleSuccess(addRes, 'שגיאה ביצירת גיליון דוח הנוכחות');
-            await appendRowToSheet(ATTENDANCE_SHEET_NAME, ['יום', 'שעת כניסה', 'שעת יציאה', 'גן', 'נוספים - הערות', 'דווחה']);
+            await appendRowToSheet(ATTENDANCE_SHEET_NAME, ['יום', 'שעת כניסה', 'שעת יציאה', 'גן', 'נוספים - הערות', 'דווחה', 'מזהה מקור']);
         }
 
         async function updateAttendanceRow(entry, rowData) {
-            const range = `'${ATTENDANCE_SHEET_NAME}'!A${entry.rowNumber}:F${entry.rowNumber}`;
+            const endColumn = String.fromCharCode(64 + rowData.length);
+            const range = `'${ATTENDANCE_SHEET_NAME}'!A${entry.rowNumber}:${endColumn}${entry.rowNumber}`;
             const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ range, majorDimension: 'ROWS', values: [rowData] })
             });
             await requireGoogleSuccess(res, 'שגיאה בעדכון רשומת הנוכחות');
+        }
+
+        function createAttendanceSourceKey() {
+            return `entry-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        }
+
+        async function syncGardenEntryToAttendance(entry, gardenName, activity, reported, mode) {
+            await ensureAttendanceSheet();
+            const sourceKey = entry.sourceKey || createAttendanceSourceKey();
+            const rowData = [entry.date, '', '', gardenName, activity || '', reported ? 'כן' : 'לא', sourceKey];
+            const existing = appData.attendance.find(item => item.sourceKey === sourceKey) || appData.attendance.find(item => item.date === entry.date && item.garden === gardenName && item.extras === (activity || ''));
+
+            if (mode === 'delete') {
+                if (existing) await deleteAttendanceEntry(existing, false, false);
+                return sourceKey;
+            }
+
+            if (existing) {
+                await updateAttendanceRow(existing, rowData);
+                Object.assign(existing, { date: entry.date, garden: gardenName, extras: activity || '', reported, sourceKey });
+            } else {
+                await appendRowToSheet(ATTENDANCE_SHEET_NAME, rowData);
+                const rowNumber = appData.attendance.reduce((max, item) => Math.max(max, item.rowNumber || 1), 1) + 1;
+                appData.attendance.push({ date: entry.date, entryTime: '', exitTime: '', garden: gardenName, extras: activity || '', reported, sourceKey, rowNumber });
+            }
+            return sourceKey;
         }
 
         async function saveAttendanceFields(entry, card) {
@@ -606,9 +642,9 @@
             finally { setWriteInProgress(false); }
         }
 
-        async function deleteAttendanceEntry(entry) {
-            if (writeInProgress || !confirm('למחוק את רשומת הנוכחות?')) return;
-            setWriteInProgress(true);
+        async function deleteAttendanceEntry(entry, askForConfirmation = true, manageBusyState = true) {
+            if ((writeInProgress && askForConfirmation) || (askForConfirmation && !confirm('למחוק את רשומת הנוכחות?'))) return;
+            if (manageBusyState) setWriteInProgress(true);
             try {
                 const metaRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
                 const meta = await requireGoogleSuccess(metaRes, 'שגיאה באיתור גיליון דוח הנוכחות');
@@ -621,7 +657,7 @@
                 appData.attendance = appData.attendance.filter(item => item !== entry).map(item => item.rowNumber > entry.rowNumber ? { ...item, rowNumber: item.rowNumber - 1 } : item);
                 renderAttendance();
             } catch (err) { alert('מחיקת רשומת הנוכחות נכשלה: ' + err.message); }
-            finally { setWriteInProgress(false); }
+            finally { if (manageBusyState) setWriteInProgress(false); }
         }
 
         function render() {
@@ -639,21 +675,9 @@
                 container.appendChild(btn);
             });
 
-            const attendanceTab = document.createElement('button');
-            attendanceTab.className = `tab-btn ${activeView === 'attendance' ? 'active' : ''}`;
-            attendanceTab.innerText = 'דוח נוכחות';
-            attendanceTab.onclick = () => { activeView = 'attendance'; render(); };
-            container.appendChild(attendanceTab);
-
-            document.getElementById('attendance-card').style.display = activeView === 'attendance' ? 'block' : 'none';
             document.getElementById('garden-history-card').style.display = activeView === 'garden' ? 'block' : 'none';
             document.querySelector('main > .card:first-child').style.display = activeView === 'garden' ? 'block' : 'none';
             document.getElementById('add-btn').parentElement.parentElement.style.display = activeView === 'garden' ? 'flex' : 'none';
-
-            if (activeView === 'attendance') {
-                renderAttendance();
-                return;
-            }
 
             document.getElementById('current-title').innerText = activeName;
             document.getElementById('active-label').innerText = `גן נבחר: ${activeName}`;
@@ -685,7 +709,7 @@
                             <button class="btn-secondary" type="button" style="color: var(--danger);">מחיקה</button>
                         </div>
                     </div>
-                    <div style="font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(e.text)}</div>
+                    <div style="font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(e.text)}${e.activity ? `<div style="margin-top: 6px; font-size: .78rem; color: var(--primary-dark);"><strong>פעילות:</strong> ${escapeHtml(e.activity)}</div>` : ''}</div>
                 `;
                 const buttons = div.querySelectorAll('button');
                 buttons[0].onclick = () => editEntry(e);
@@ -697,6 +721,7 @@
 
         function renderAttendance() {
             const list = document.getElementById('attendance-list');
+            if (!list) return;
             list.innerHTML = '';
             if (appData.attendance.length === 0) {
                 const emptyState = document.createElement('div');
@@ -711,7 +736,7 @@
                 div.className = 'entry-card';
                 const selectedExtras = entry.extras.split(',').map(value => value.trim()).filter(Boolean);
                 const extrasOptions = ATTENDANCE_CATEGORIES.map(category => `<label class="attendance-option"><input type="checkbox" data-extra="${escapeHtml(category)}" ${selectedExtras.includes(category) ? 'checked' : ''}>${escapeHtml(category)}</label>`).join('');
-                const gardenOptions = appData.kindergartens.map(garden => `<option value="${escapeHtml(garden)}" ${entry.garden === garden ? 'selected' : ''}>${escapeHtml(garden)}</option>`).join('');
+                const gardenOptions = [GENERAL_GARDEN_NAME, ...appData.kindergartens].map(garden => `<option value="${escapeHtml(garden)}" ${entry.garden === garden ? 'selected' : ''}>${escapeHtml(garden)}</option>`).join('');
                 div.innerHTML = `
                     <div class="entry-header">
                         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -773,6 +798,7 @@
             const dateEl = document.getElementById('entry-date');
             const text = textEl.value.trim();
             const date = dateEl.value;
+            const activity = Array.from(document.querySelectorAll('[data-entry-activity]:checked')).map(input => input.dataset.entryActivity).join(', ');
 
             if(!text) { alert('נא להזין טקסט לעדכון.'); return; }
             if(!date) { alert('נא לבחור תאריך.'); return; }
@@ -783,21 +809,25 @@
 
             if(!appData.entries[activeName]) appData.entries[activeName] = [];
             const timeStr = editingEntry?.timestamp || new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-            const newEntry = { date: date, text: text, timestamp: timeStr, reported: editingEntry?.reported || false };
+            const newEntry = { date: date, text: text, timestamp: timeStr, reported: editingEntry?.reported || false, activity, sourceKey: editingEntry?.sourceKey || '' };
             
             setWriteInProgress(true);
             document.getElementById('sync-status').innerText = "שומר לגוגל שיטס...";
             try {
                 if (editingEntry) {
-                    await updateRowInSheet(activeName, editingEntry.rowNumber, [date, text, timeStr, editingEntry.reported ? 'כן' : 'לא']);
+                    await updateRowInSheet(activeName, editingEntry.rowNumber, [date, text, timeStr, editingEntry.reported ? 'כן' : 'לא', activity]);
                     editingEntry.date = date;
                     editingEntry.text = text;
                     editingEntry.timestamp = timeStr;
+                    editingEntry.activity = activity;
+                    editingEntry.sourceKey = await syncGardenEntryToAttendance(editingEntry, activeName, activity, editingEntry.reported, 'update');
                 } else {
-                    await appendRowToSheet(activeName, [date, text, timeStr, 'לא']);
+                    await appendRowToSheet(activeName, [date, text, timeStr, 'לא', activity]);
                     const existingEntries = appData.entries[activeName];
                     const lastRowNumber = existingEntries.reduce((max, entry) => Math.max(max, entry.rowNumber || 1), 1);
-                    existingEntries.push({ ...newEntry, rowNumber: lastRowNumber + 1 });
+                    const savedEntry = { ...newEntry, rowNumber: lastRowNumber + 1 };
+                    savedEntry.sourceKey = await syncGardenEntryToAttendance(savedEntry, activeName, activity, false, 'create');
+                    existingEntries.push(savedEntry);
                 }
                 editingEntry = null;
                 updateEditControls();
@@ -815,13 +845,15 @@
             msg.style.display = 'block';
             setTimeout(() => msg.style.display = 'none', 3000);
             textEl.value = '';
+            clearEntryActivities();
         }
 
         async function toggleEntryReported(sheetName, entry, reported) {
             if (writeInProgress) return;
             setWriteInProgress(true);
             try {
-                await updateRowInSheet(sheetName, entry.rowNumber, [entry.date, entry.text, entry.timestamp, reported ? 'כן' : 'לא']);
+                await updateRowInSheet(sheetName, entry.rowNumber, [entry.date, entry.text, entry.timestamp, reported ? 'כן' : 'לא', entry.activity || '']);
+                entry.sourceKey = await syncGardenEntryToAttendance(entry, sheetName, entry.activity || '', reported, 'update');
                 entry.reported = reported;
                 render();
             } catch (err) {
@@ -849,6 +881,7 @@
                     body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: entry.rowNumber - 1, endIndex: entry.rowNumber } } }] })
                 });
                 await requireGoogleSuccess(deleteRes, 'מחיקת הרשומה נכשלה');
+                if (entry.sourceKey) await syncGardenEntryToAttendance(entry, sheetName, entry.activity || '', entry.reported, 'delete');
                 appData.entries[sheetName] = (appData.entries[sheetName] || []).filter(item => item !== entry).map(item => item.rowNumber > entry.rowNumber ? { ...item, rowNumber: item.rowNumber - 1 } : item);
                 render();
             } catch (err) {
@@ -862,6 +895,7 @@
             editingEntry = entry;
             document.getElementById('entry-date').value = entry.date;
             document.getElementById('entry-text').value = entry.text;
+            setEntryActivities(entry.activity || '');
             updateEditControls();
             document.getElementById('entry-text').focus();
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -870,8 +904,20 @@
         function cancelEdit() {
             editingEntry = null;
             document.getElementById('entry-text').value = '';
+            clearEntryActivities();
             document.getElementById('entry-date').valueAsDate = new Date();
             updateEditControls();
+        }
+
+        function setEntryActivities(activityText) {
+            const selected = activityText.split(',').map(value => value.trim()).filter(Boolean);
+            document.querySelectorAll('[data-entry-activity]').forEach(input => {
+                input.checked = selected.includes(input.dataset.entryActivity);
+            });
+        }
+
+        function clearEntryActivities() {
+            document.querySelectorAll('[data-entry-activity]').forEach(input => { input.checked = false; });
         }
 
         function updateEditControls() {
@@ -896,7 +942,7 @@
                             body: JSON.stringify({ requests: [{ addSheet: { properties: { title: trimmed } } }] })
                         });
                         await requireGoogleSuccess(res, 'שגיאה בהוספת הגן');
-                        await appendRowToSheet(trimmed, ['תאריך', 'תוכן העדכון', 'שעת רישום', 'דווח']);
+                        await appendRowToSheet(trimmed, ['תאריך', 'תוכן העדכון', 'שעת רישום', 'דווח', 'פעילות']);
                         appData.kindergartens.push(trimmed);
                         appData.entries[trimmed] = [];
                         activeTab = appData.kindergartens.length - 1;
