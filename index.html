@@ -55,6 +55,8 @@
         .attendance-option { display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--text); font-size: .75rem; cursor: pointer; }
         .attendance-option:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-dark); }
         .attendance-option input { width: auto; }
+        .entry-activities { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+        .entry-activity-tag { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); font-size: .74rem; font-weight: 800; }
         .attendance-inline-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
         @media (max-width: 700px) { .attendance-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } .attendance-options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
         @media (max-width: 600px) { .attendance-fields { grid-template-columns: 1fr; } }
@@ -697,6 +699,7 @@
             entries.forEach(e => {
                 const div = document.createElement('div');
                 div.className = 'entry-card';
+                const activityTags = (e.activity || '').split(',').map(activity => activity.trim()).filter(Boolean).map(activity => `<span class="entry-activity-tag">${escapeHtml(activity)}</span>`).join('');
                 div.innerHTML = `
                     <div class="entry-header">
                         <span class="badge">${escapeHtml(formatHebrewDate(e.date))} (${escapeHtml(e.timestamp || '')})</span>
@@ -709,7 +712,7 @@
                             <button class="btn-secondary" type="button" style="color: var(--danger);">מחיקה</button>
                         </div>
                     </div>
-                    <div style="font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(e.text)}${e.activity ? `<div style="margin-top: 6px; font-size: .78rem; color: var(--primary-dark);"><strong>פעילות:</strong> ${escapeHtml(e.activity)}</div>` : ''}</div>
+                    <div style="font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(e.text)}${activityTags ? `<div class="entry-activities" aria-label="פעילויות נבחרות">${activityTags}</div>` : ''}</div>
                 `;
                 const buttons = div.querySelectorAll('button');
                 buttons[0].onclick = () => editEntry(e);
