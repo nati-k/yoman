@@ -160,6 +160,12 @@
 
         const ATTENDANCE_SHEET_NAME = 'דוח נוכחות';
         const ATTENDANCE_CATEGORIES = ['פיתוח תכנים', 'מעטפת מקצועית', 'ממשקים וניהול', 'מילוי טפסים'];
+        const ATTENDANCE_CATEGORY_ALIASES = {
+            'פיתוח': 'פיתוח תכנים',
+            'מעטפת': 'מעטפת מקצועית',
+            'ממשקים': 'ממשקים וניהול',
+            'מילוי': 'מילוי טפסים'
+        };
 
         let appData = { kindergartens: [], entries: {}, attendance: [] };
         let activeTab = 0;
@@ -474,16 +480,14 @@
             let rest = text;
             if (dateMatch) rest = rest.replace(dateMatch[2], ' ');
             if (timeMatch) rest = rest.replace(timeMatch[0], ' ');
-            rest = rest.trim();
-            const separator = rest.match(/\s(?:-|–|—|:|;|\|)\s/);
-            const gardenText = separator ? rest.slice(0, separator.index).trim() : rest;
-            const extrasText = separator ? rest.slice(separator.index + separator[0].length).trim() : '';
-            const garden = appData.kindergartens.find(name => gardenText === name) || appData.kindergartens.find(name => rest.includes(name));
+            const detectedExtras = [...ATTENDANCE_CATEGORIES, ...Object.keys(ATTENDANCE_CATEGORY_ALIASES)]
+                .filter(category => rest.includes(category));
+            let extras = [...new Set(detectedExtras.map(category => ATTENDANCE_CATEGORY_ALIASES[category] || category))];
+            detectedExtras.forEach(category => { rest = rest.replaceAll(category, ' '); });
+            rest = rest.replace(/\s(?:-|–|—|:|;|\|)\s/g, ' ').replace(/[,.،؛]+/g, ' ').trim();
+            const garden = appData.kindergartens.find(name => rest.trim() === name) || appData.kindergartens.find(name => rest.includes(name));
             if (!garden) throw new Error('לא מצאתי גן מוכר בשורה. השתמש בשם של אחד הגנים הקיימים.');
 
-            const extras = extrasText.split(',').map(value => value.trim()).filter(Boolean);
-            const invalidExtras = extras.filter(value => !ATTENDANCE_CATEGORIES.includes(value));
-            if (invalidExtras.length) throw new Error(`האפשרות אינה מוכרת: ${invalidExtras.join(', ')}. האפשרויות הן: ${ATTENDANCE_CATEGORIES.join(', ')}.`);
             return { date, entryTime, exitTime, garden, extras: extras.join(', ') };
         }
 
