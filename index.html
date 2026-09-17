@@ -47,6 +47,12 @@
         .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 8px 18px rgba(15,118,110,.22); }
         .entry-card { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin-bottom: 12px; position: relative; animation: rise .35s ease both; }
         .attendance-command { min-height: 92px; }
+        .attendance-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+        .attendance-field { display: flex; flex-direction: column; gap: 5px; font-size: .78rem; color: var(--muted); font-weight: 800; }
+        .attendance-field input, .attendance-field select { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; color: var(--text); background: white; font: inherit; }
+        .attendance-field select[multiple] { min-height: 82px; }
+        .attendance-inline-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
+        @media (max-width: 600px) { .attendance-fields { grid-template-columns: 1fr; } }
         .entry-header { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); margin-bottom: 10px; border-bottom: 1px solid var(--line); padding-bottom: 9px; }
         .badge { background: var(--primary-soft); color: var(--primary-dark); padding: 5px 9px; border-radius: 8px; font-weight: 800; }
         .status-msg { font-size: .82rem; color: var(--primary); font-weight: 800; margin-inline-end: auto; display: none; }
@@ -115,7 +121,10 @@
             <div class="card" id="attendance-card" style="display: none; margin-top: 20px;">
                 <div class="label">דוח נוכחות</div>
                 <div style="font-size: .84rem; color: var(--muted); line-height: 1.6; margin-bottom: 12px;">כתוב שורה אחת. לדוגמה: 17/9 08:00-13:30 גן שקד - פיתוח תכנים, מעטפת מקצועית</div>
-                <textarea id="attendance-command" class="attendance-command" rows="2" placeholder="גן שקד - פיתוח תכנים, מעטפת מקצועית 08:00-13:30"></textarea>
+                <div style="position: relative; margin-bottom: 12px;">
+                    <textarea id="attendance-command" class="attendance-command" rows="2" placeholder="גן שקד - פיתוח תכנים, מעטפת מקצועית 08:00-13:30"></textarea>
+                    <button id="attendance-mic-btn" class="btn-mic" onclick="toggleSpeech('attendance-command', 'attendance-mic-btn')" style="position: absolute; bottom: 12px; left: 12px;" title="הכתבה קולית">🎤 הקלטה</button>
+                </div>
                 <div class="row" style="justify-content: flex-end; margin-top: 12px; margin-bottom: 18px;">
                     <div id="attendance-status" class="status-msg">✓ הרשומה נשמרה!</div>
                     <button id="attendance-cancel-btn" class="btn-secondary btn-cancel" onclick="cancelAttendanceEdit()">ביטול עריכה</button>
@@ -159,6 +168,7 @@
         let writeInProgress = false;
         let editingEntry = null;
         let editingAttendance = null;
+        let activeMicButtonId = 'mic-btn';
 
         document.getElementById('entry-date').valueAsDate = new Date();
 
@@ -506,6 +516,25 @@
             await requireGoogleSuccess(res, 'שגיאה בעדכון רשומת הנוכחות');
         }
 
+        async function saveAttendanceFields(entry, card) {
+            if (writeInProgress) return;
+            const date = card.querySelector('[data-field="date"]').value;
+            const entryTime = card.querySelector('[data-field="entryTime"]').value;
+            const exitTime = card.querySelector('[data-field="exitTime"]').value;
+            const garden = card.querySelector('[data-field="garden"]').value;
+            const extras = Array.from(card.querySelector('[data-field="extras"]').selectedOptions).map(option => option.value).join(', ');
+            if (!date || !garden) { alert('נא לבחור תאריך וגן.'); return; }
+
+            setWriteInProgress(true);
+            try {
+                await updateAttendanceRow(entry, [date, entryTime, exitTime, garden, extras, entry.reported ? 'כן' : 'לא']);
+                Object.assign(entry, { date, entryTime, exitTime, garden, extras });
+                renderAttendance();
+            } catch (err) {
+                alert('עדכון רשומת הנוכחות נכשל: ' + err.message);
+            } finally { setWriteInProgress(false); }
+        }
+
         async function saveAttendanceEntry() {
             if (writeInProgress) return;
             let parsed;
@@ -673,22 +702,30 @@
             appData.attendance.slice().reverse().forEach(entry => {
                 const div = document.createElement('div');
                 div.className = 'entry-card';
+                const selectedExtras = entry.extras.split(',').map(value => value.trim()).filter(Boolean);
+                const extrasOptions = ATTENDANCE_CATEGORIES.map(category => `<option value="${escapeHtml(category)}" ${selectedExtras.includes(category) ? 'selected' : ''}>${escapeHtml(category)}</option>`).join('');
+                const gardenOptions = appData.kindergartens.map(garden => `<option value="${escapeHtml(garden)}" ${entry.garden === garden ? 'selected' : ''}>${escapeHtml(garden)}</option>`).join('');
                 div.innerHTML = `
                     <div class="entry-header">
-                        <span class="badge">${escapeHtml(formatHebrewDate(entry.date))} · ${escapeHtml(entry.entryTime || '--:--')}-${escapeHtml(entry.exitTime || '--:--')}</span>
                         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                             <label class="btn-secondary" style="display:flex;align-items:center;gap:5px;color:${entry.reported ? 'var(--primary)' : 'var(--muted)'};">
                                 <input type="checkbox" ${entry.reported ? 'checked' : ''} aria-label="סומנה כדווחה"> דווחה
                             </label>
-                            <button class="btn-secondary" type="button">עריכה</button>
                             <button class="btn-secondary" type="button" style="color:var(--danger);">מחיקה</button>
                         </div>
                     </div>
-                    <div style="font-size:.9rem;line-height:1.6;"><strong>${escapeHtml(entry.garden)}</strong>${entry.extras ? `<br>${escapeHtml(entry.extras)}` : ''}</div>
+                    <div class="attendance-fields">
+                        <label class="attendance-field">יום<input type="date" data-field="date" value="${escapeHtml(entry.date)}"></label>
+                        <label class="attendance-field">שעת כניסה<input type="time" data-field="entryTime" value="${escapeHtml(entry.entryTime)}"></label>
+                        <label class="attendance-field">שעת יציאה<input type="time" data-field="exitTime" value="${escapeHtml(entry.exitTime)}"></label>
+                        <label class="attendance-field">גן<select data-field="garden">${gardenOptions}</select></label>
+                        <label class="attendance-field" style="grid-column:1 / -1;">נוספים - הערות<select data-field="extras" multiple>${extrasOptions}</select></label>
+                    </div>
+                    <div class="attendance-inline-actions"><button class="btn" type="button">שמור שינויים</button></div>
                 `;
                 const buttons = div.querySelectorAll('button');
-                buttons[0].onclick = () => editAttendanceEntry(entry);
-                buttons[1].onclick = () => deleteAttendanceEntry(entry);
+                buttons[0].onclick = () => deleteAttendanceEntry(entry);
+                buttons[1].onclick = () => saveAttendanceFields(entry, div);
                 div.querySelector('input').onchange = event => toggleAttendanceReported(entry, event.target.checked);
                 list.appendChild(div);
             });
@@ -962,7 +999,7 @@
             return { isIOS, isAndroid, isChrome };
         }
 
-        async function toggleSpeech() {
+        async function toggleSpeech(targetId = 'entry-text', buttonId = 'mic-btn') {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             const isSecureContext = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost';
             const mobile = getMobileBrowserInfo();
@@ -979,11 +1016,11 @@
 
             if (!SpeechRecognition) {
                 if (mobile.isIOS) {
-                    focusKeyboardDictation('ב-Chrome באייפון, ההכתבה עשויה לעבוד רק דרך Dictation של המקלדת. אם המיקרופון חסום, אפשר להפעיל אותו בהגדרות האפליקציה/אתר.');
+                    focusKeyboardDictation('ב-Chrome באייפון, ההכתבה עשויה לעבוד רק דרך Dictation של המקלדת. אם המיקרופון חסום, אפשר להפעיל אותו בהגדרות האפליקציה/אתר.', targetId);
                 } else if (mobile.isAndroid && mobile.isChrome) {
-                    focusKeyboardDictation('ב-Chrome באנדרואיד, אם ההקלטה לא מופעלת, אפשר להפעיל מיקרופון מהגדרות האתר או להשתמש בהכתבה מהמקלדת.');
+                    focusKeyboardDictation('ב-Chrome באנדרואיד, אם ההקלטה לא מופעלת, אפשר להפעיל מיקרופון מהגדרות האתר או להשתמש בהכתבה מהמקלדת.', targetId);
                 } else {
-                    focusKeyboardDictation('ההכתבה באתר אינה זמינה בדפדפן הזה. השתמש במקלדת/Dictation או ב-Chrome/Edge עם הרשאת מיקרופון.');
+                    focusKeyboardDictation('ההכתבה באתר אינה זמינה בדפדפן הזה. השתמש במקלדת/Dictation או ב-Chrome/Edge עם הרשאת מיקרופון.', targetId);
                 }
                 return;
             }
@@ -994,7 +1031,8 @@
             recognition.continuous = false;
             recognition.maxAlternatives = 1;
 
-            const micBtn = document.getElementById('mic-btn');
+            const micBtn = document.getElementById(buttonId);
+            activeMicButtonId = buttonId;
             recognition.onstart = () => { isRecording = true; micBtn.className = 'btn-mic recording'; micBtn.innerText = '🔴 מאזין...'; };
             recognition.onresult = (e) => {
                 let transcript = '';
@@ -1002,9 +1040,9 @@
                     transcript += e.results[i][0]?.transcript || '';
                 }
                 if (!transcript.trim()) return;
-                const textField = document.getElementById('entry-text');
+                const textField = document.getElementById(targetId);
                 textField.value = [textField.value.trim(), transcript.trim()].filter(Boolean).join(' ');
-                detectAndSwitch(transcript.trim());
+                if (targetId === 'entry-text') detectAndSwitch(transcript.trim());
             };
             recognition.onerror = (event) => {
                 const messages = {
@@ -1017,7 +1055,7 @@
                 };
                 stopMic();
                 if (event.error === 'service-not-allowed' || event.error === 'not-allowed') {
-                    focusKeyboardDictation('הגישה למיקרופון נחסמה. בדפדפן/מערכת ההפעלה, אפשר הרשאת מיקרופון או השתמש בהכתבה מהמקלדת.');
+                    focusKeyboardDictation('הגישה למיקרופון נחסמה. בדפדפן/מערכת ההפעלה, אפשר הרשאת מיקרופון או השתמש בהכתבה מהמקלדת.', targetId);
                 } else if (event.error !== 'aborted') {
                     alert(messages[event.error] || `שגיאת הכתבה: ${event.error || 'לא ידועה'}`);
                 }
@@ -1026,8 +1064,8 @@
             try { recognition.start(); } catch (ex) { stopMic(); }
         }
 
-        function focusKeyboardDictation(message = 'ההכתבה באתר אינה זמינה בדפדפן הזה. השתמש במיקרופון של המקלדת או ב-Chrome/Edge עם הרשאת מיקרופון.') {
-            const textField = document.getElementById('entry-text');
+        function focusKeyboardDictation(message = 'ההכתבה באתר אינה זמינה בדפדפן הזה. השתמש במיקרופון של המקלדת או ב-Chrome/Edge עם הרשאת מיקרופון.', targetId = 'entry-text') {
+            const textField = document.getElementById(targetId);
             if (textField) {
                 textField.focus();
                 textField.selectionStart = textField.value.length;
@@ -1038,7 +1076,7 @@
 
         function stopMic() {
             isRecording = false;
-            const micBtn = document.getElementById('mic-btn');
+            const micBtn = document.getElementById(activeMicButtonId);
             if(micBtn) { micBtn.className = 'btn-mic'; micBtn.innerText = '🎤 הקלטה'; }
         }
 
