@@ -295,7 +295,7 @@
             localStorage.setItem('yoman_sheet_id', spreadsheetId);
 
             for (let name of defaultKgs) {
-                await appendRowToSheet(name, ['תאריך', 'תוכן העדכון', 'שעת רישום']);
+                await appendRowToSheet(name, ['תאריך', 'תוכן העדכון', 'שעת רישום', 'דווח']);
             }
             await loadFromSheetCloud();
         }
@@ -309,7 +309,7 @@
 
             const params = new URLSearchParams();
             params.set('majorDimension', 'ROWS');
-            newKgs.forEach(name => params.append('ranges', `'${name.replace(/'/g, "''")}'!A:C`));
+            newKgs.forEach(name => params.append('ranges', `'${name.replace(/'/g, "''")}'!A:D`));
             const valuesRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${params}`);
             const valuesData = await requireGoogleSuccess(valuesRes, 'שגיאה בטעינת הדיווחים');
             const newEntries = {};
@@ -319,7 +319,7 @@
                 newEntries[title] = rows.slice(1)
                     .map((row, rowIndex) => ({ row, rowNumber: rowIndex + 2 }))
                     .filter(item => item.row[0])
-                    .map(item => ({ date: item.row[0], text: item.row[1] || '', timestamp: item.row[2] || '', rowNumber: item.rowNumber }));
+                        .map(item => ({ date: item.row[0], text: item.row[1] || '', timestamp: item.row[2] || '', reported: item.row[3] === 'כן' || item.row[3] === 'TRUE', rowNumber: item.rowNumber }));
             });
 
             appData.kindergartens = newKgs;
@@ -345,7 +345,7 @@
 
         async function updateRowInSheet(sheetName, rowNumber, rowData) {
             if (!spreadsheetId || !accessToken) return;
-            const range = `'${sheetName.replace(/'/g, "''")}'!A${rowNumber}:C${rowNumber}`;
+            const range = `'${sheetName.replace(/'/g, "''")}'!A${rowNumber}:D${rowNumber}`;
             const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -435,11 +435,21 @@
                 div.innerHTML = `
                     <div class="entry-header">
                         <span class="badge">${escapeHtml(formatHebrewDate(e.date))} (${escapeHtml(e.timestamp || '')})</span>
-                        <button class="btn-secondary" type="button">עריכה</button>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label class="btn-secondary" style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: ${e.reported ? 'var(--primary)' : 'var(--muted)'};">
+                                <input type="checkbox" ${e.reported ? 'checked' : ''} aria-label="סומן כדווח">
+                                דווח
+                            </label>
+                            <button class="btn-secondary" type="button">עריכה</button>
+                            <button class="btn-secondary" type="button" style="color: var(--danger);">מחיקה</button>
+                        </div>
                     </div>
                     <div style="font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(e.text)}</div>
                 `;
-                div.querySelector('button').onclick = () => editEntry(e);
+                const buttons = div.querySelectorAll('button');
+                buttons[0].onclick = () => editEntry(e);
+                buttons[1].onclick = () => deleteEntry(activeName, e);
+                div.querySelector('input').onchange = event => toggleEntryReported(activeName, e, event.target.checked);
                 list.appendChild(div);
             });
         }
@@ -489,18 +499,18 @@
 
             if(!appData.entries[activeName]) appData.entries[activeName] = [];
             const timeStr = editingEntry?.timestamp || new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-            const newEntry = { date: date, text: text, timestamp: timeStr };
+            const newEntry = { date: date, text: text, timestamp: timeStr, reported: editingEntry?.reported || false };
             
             setWriteInProgress(true);
             document.getElementById('sync-status').innerText = "שומר לגוגל שיטס...";
             try {
                 if (editingEntry) {
-                    await updateRowInSheet(activeName, editingEntry.rowNumber, [date, text, timeStr]);
+                    await updateRowInSheet(activeName, editingEntry.rowNumber, [date, text, timeStr, editingEntry.reported ? 'כן' : 'לא']);
                     editingEntry.date = date;
                     editingEntry.text = text;
                     editingEntry.timestamp = timeStr;
                 } else {
-                    await appendRowToSheet(activeName, [date, text, timeStr]);
+                    await appendRowToSheet(activeName, [date, text, timeStr, 'לא']);
                     const existingEntries = appData.entries[activeName];
                     const lastRowNumber = existingEntries.reduce((max, entry) => Math.max(max, entry.rowNumber || 1), 1);
                     existingEntries.push({ ...newEntry, rowNumber: lastRowNumber + 1 });
@@ -521,6 +531,47 @@
             msg.style.display = 'block';
             setTimeout(() => msg.style.display = 'none', 3000);
             textEl.value = '';
+        }
+
+        async function toggleEntryReported(sheetName, entry, reported) {
+            if (writeInProgress) return;
+            setWriteInProgress(true);
+            try {
+                await updateRowInSheet(sheetName, entry.rowNumber, [entry.date, entry.text, entry.timestamp, reported ? 'כן' : 'לא']);
+                entry.reported = reported;
+                render();
+            } catch (err) {
+                alert('עדכון סטטוס הדיווח נכשל: ' + err.message);
+                render();
+            } finally {
+                setWriteInProgress(false);
+            }
+        }
+
+        async function deleteEntry(sheetName, entry) {
+            if (writeInProgress) return;
+            if (!confirm('למחוק את הרשומה הזו?')) return;
+
+            setWriteInProgress(true);
+            try {
+                const metaRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
+                const meta = await requireGoogleSuccess(metaRes, 'שגיאה באיתור הגיליון');
+                const sheet = meta.sheets.find(item => item.properties.title === sheetName);
+                if (!sheet) throw new Error('הגיליון לא נמצא.');
+
+                const deleteRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: entry.rowNumber - 1, endIndex: entry.rowNumber } } }] })
+                });
+                await requireGoogleSuccess(deleteRes, 'מחיקת הרשומה נכשלה');
+                appData.entries[sheetName] = (appData.entries[sheetName] || []).filter(item => item !== entry).map(item => item.rowNumber > entry.rowNumber ? { ...item, rowNumber: item.rowNumber - 1 } : item);
+                render();
+            } catch (err) {
+                alert('מחיקת הרשומה נכשלה: ' + err.message);
+            } finally {
+                setWriteInProgress(false);
+            }
         }
 
         function editEntry(entry) {
@@ -561,7 +612,7 @@
                             body: JSON.stringify({ requests: [{ addSheet: { properties: { title: trimmed } } }] })
                         });
                         await requireGoogleSuccess(res, 'שגיאה בהוספת הגן');
-                        await appendRowToSheet(trimmed, ['תאריך', 'תוכן העדכון', 'שעת רישום']);
+                        await appendRowToSheet(trimmed, ['תאריך', 'תוכן העדכון', 'שעת רישום', 'דווח']);
                         appData.kindergartens.push(trimmed);
                         appData.entries[trimmed] = [];
                         activeTab = appData.kindergartens.length - 1;
