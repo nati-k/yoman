@@ -50,7 +50,10 @@
         .attendance-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
         .attendance-field { display: flex; flex-direction: column; gap: 5px; font-size: .78rem; color: var(--muted); font-weight: 800; }
         .attendance-field input, .attendance-field select { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; color: var(--text); background: white; font: inherit; }
-        .attendance-field select[multiple] { min-height: 82px; }
+        .attendance-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+        .attendance-option { display: flex; align-items: center; gap: 7px; min-height: 40px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--text); font-size: .82rem; cursor: pointer; }
+        .attendance-option:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-dark); }
+        .attendance-option input { width: auto; }
         .attendance-inline-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
         @media (max-width: 600px) { .attendance-fields { grid-template-columns: 1fr; } }
         .entry-header { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); margin-bottom: 10px; border-bottom: 1px solid var(--line); padding-bottom: 9px; }
@@ -522,7 +525,7 @@
             const entryTime = card.querySelector('[data-field="entryTime"]').value;
             const exitTime = card.querySelector('[data-field="exitTime"]').value;
             const garden = card.querySelector('[data-field="garden"]').value;
-            const extras = Array.from(card.querySelector('[data-field="extras"]').selectedOptions).map(option => option.value).join(', ');
+            const extras = Array.from(card.querySelectorAll('[data-extra]:checked')).map(input => input.dataset.extra).join(', ');
             if (!date || !garden) { alert('נא לבחור תאריך וגן.'); return; }
 
             setWriteInProgress(true);
@@ -703,7 +706,7 @@
                 const div = document.createElement('div');
                 div.className = 'entry-card';
                 const selectedExtras = entry.extras.split(',').map(value => value.trim()).filter(Boolean);
-                const extrasOptions = ATTENDANCE_CATEGORIES.map(category => `<option value="${escapeHtml(category)}" ${selectedExtras.includes(category) ? 'selected' : ''}>${escapeHtml(category)}</option>`).join('');
+                const extrasOptions = ATTENDANCE_CATEGORIES.map(category => `<label class="attendance-option"><input type="checkbox" data-extra="${escapeHtml(category)}" ${selectedExtras.includes(category) ? 'checked' : ''}>${escapeHtml(category)}</label>`).join('');
                 const gardenOptions = appData.kindergartens.map(garden => `<option value="${escapeHtml(garden)}" ${entry.garden === garden ? 'selected' : ''}>${escapeHtml(garden)}</option>`).join('');
                 div.innerHTML = `
                     <div class="entry-header">
@@ -719,7 +722,7 @@
                         <label class="attendance-field">שעת כניסה<input type="time" data-field="entryTime" value="${escapeHtml(entry.entryTime)}"></label>
                         <label class="attendance-field">שעת יציאה<input type="time" data-field="exitTime" value="${escapeHtml(entry.exitTime)}"></label>
                         <label class="attendance-field">גן<select data-field="garden">${gardenOptions}</select></label>
-                        <label class="attendance-field" style="grid-column:1 / -1;">נוספים - הערות<select data-field="extras" multiple>${extrasOptions}</select></label>
+                        <div class="attendance-field" style="grid-column:1 / -1;"><span>נוספים - הערות</span><div class="attendance-options">${extrasOptions}</div></div>
                     </div>
                     <div class="attendance-inline-actions"><button class="btn" type="button">שמור שינויים</button></div>
                 `;
