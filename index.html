@@ -57,6 +57,11 @@
         .attendance-option input { width: auto; }
         .entry-activities { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
         .entry-activity-tag { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); font-size: .74rem; font-weight: 800; }
+        .report-search-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .report-search-field { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: .78rem; font-weight: 800; }
+        .report-search-field input { border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; color: var(--text); background: var(--surface-soft); font: inherit; }
+        .report-search-results { margin-top: 14px; }
+        .search-result-garden { color: var(--primary-dark); font-weight: 800; font-size: .8rem; margin-bottom: 4px; }
         .attendance-inline-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
         @media (max-width: 700px) { .attendance-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } .attendance-options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
         @media (max-width: 600px) { .attendance-fields { grid-template-columns: 1fr; } }
@@ -106,7 +111,7 @@
                     </div>
                 </div>
                 <div style="position: relative; margin-bottom: 12px;">
-                    <textarea id="entry-text" rows="3" placeholder="הקלד כאן או לחץ על המיקרופון (למשל: 'גן 3, ביקרנו היום בחצר...')"></textarea>
+                    <textarea id="entry-text" rows="3" placeholder="הקלד כאן או לחץ על המיקרופון (למשל: 'גן 3, ביקרנו היום במוקד חצר...')"></textarea>
                     <button id="mic-btn" class="btn-mic" onclick="toggleSpeech()" style="position: absolute; bottom: 12px; left: 12px;" title="הכתבה קולית">🎤 הקלטה</button>
                 </div>
                 <div class="row" style="margin-bottom: 12px;">
@@ -117,6 +122,18 @@
                     <button id="cancel-edit-btn" class="btn-secondary btn-cancel" onclick="cancelEdit()">ביטול עריכה</button>
                     <button id="save-btn" class="btn" onclick="saveEntry()">שמור עדכון</button>
                 </div>
+            </div>
+            <div class="card" id="report-search-card">
+                <div class="label">חיפוש דיווחים</div>
+                <div class="report-search-fields">
+                    <label class="report-search-field">מתאריך<input type="date" id="report-search-from"></label>
+                    <label class="report-search-field">עד תאריך<input type="date" id="report-search-to"></label>
+                </div>
+                <div class="row" style="justify-content: flex-end; margin-top: 12px; margin-bottom: 0;">
+                    <button id="report-search-clear" class="btn-secondary" type="button">נקה חיפוש</button>
+                    <button id="report-search-submit" class="btn" type="button">חפש דיווחים</button>
+                </div>
+                <div id="report-search-results" class="report-search-results"></div>
             </div>
 
             <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -181,6 +198,8 @@
 
         document.getElementById('entry-date').valueAsDate = new Date();
         document.getElementById('entry-activities').innerHTML = ATTENDANCE_CATEGORIES.map(activity => `<label class="attendance-option"><input type="checkbox" data-entry-activity="${escapeHtml(activity)}">${escapeHtml(activity)}</label>`).join('');
+        document.getElementById('report-search-submit').addEventListener('click', searchReportsByDate);
+        document.getElementById('report-search-clear').addEventListener('click', clearReportSearch);
 
         window.onload = function () {
             initGsi();
@@ -462,6 +481,83 @@
                 }
             }
             return dateStr;
+        }
+
+        function clearReportSearch() {
+            document.getElementById('report-search-from').value = '';
+            document.getElementById('report-search-to').value = '';
+            document.getElementById('report-search-results').innerHTML = '';
+        }
+
+        function searchReportsByDate() {
+            const from = document.getElementById('report-search-from').value;
+            const to = document.getElementById('report-search-to').value || from;
+            const results = document.getElementById('report-search-results');
+            results.innerHTML = '';
+
+            if (!from) {
+                alert('נא לבחור תאריך לחיפוש.');
+                return;
+            }
+            if (to < from) {
+                alert('תאריך הסיום חייב להיות אחרי תאריך ההתחלה.');
+                return;
+            }
+
+            const matches = [];
+            appData.kindergartens.forEach(garden => {
+                (appData.entries[garden] || []).forEach(entry => {
+                    if (entry.date >= from && entry.date <= to) matches.push({ garden, entry });
+                });
+            });
+            matches.sort((a, b) => b.entry.date.localeCompare(a.entry.date) || a.garden.localeCompare(b.garden));
+
+            if (matches.length === 0) {
+                results.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px 0;font-size:.85rem;">לא נמצאו דיווחים בטווח שנבחר.</div>';
+                return;
+            }
+
+            const rangeLabel = from === to ? formatHebrewDate(from) : `${formatHebrewDate(from)} - ${formatHebrewDate(to)}`;
+            results.innerHTML = `<div style="font-size:.8rem;color:var(--muted);font-weight:800;margin-bottom:10px;">נמצאו ${matches.length} דיווחים · ${escapeHtml(rangeLabel)}</div>`;
+            matches.forEach(({ garden, entry }) => {
+                const activityTags = (entry.activity || '').split(',').map(activity => activity.trim()).filter(Boolean).map(activity => `<span class="entry-activity-tag">${escapeHtml(activity)}</span>`).join('');
+                const card = document.createElement('div');
+                card.className = 'entry-card';
+                card.innerHTML = `
+                    <div class="entry-header">
+                        <div class="search-result-garden">${escapeHtml(garden)} · ${escapeHtml(formatHebrewDate(entry.date))} (${escapeHtml(entry.timestamp || '')})</div>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <label class="btn-secondary" style="display:flex;align-items:center;gap:5px;cursor:pointer;color:${entry.reported ? 'var(--primary)' : 'var(--muted)'};">
+                                <input type="checkbox" ${entry.reported ? 'checked' : ''} aria-label="סומן כדווח">
+                                דווח
+                            </label>
+                            <button class="btn-secondary" type="button">עריכה</button>
+                            <button class="btn-secondary" type="button" style="color:var(--danger);">מחיקה</button>
+                        </div>
+                    </div>
+                    <div style="font-size:.88rem;line-height:1.5;white-space:pre-wrap;">${escapeHtml(entry.text)}${activityTags ? `<div class="entry-activities">${activityTags}</div>` : ''}</div>
+                `;
+                const buttons = card.querySelectorAll('button');
+                buttons[0].onclick = () => openSearchEntryForEdit(garden, entry);
+                buttons[1].onclick = async () => {
+                    await deleteEntry(garden, entry);
+                    searchReportsByDate();
+                };
+                card.querySelector('input').onchange = async event => {
+                    await toggleEntryReported(garden, entry, event.target.checked);
+                    searchReportsByDate();
+                };
+                results.appendChild(card);
+            });
+        }
+
+        function openSearchEntryForEdit(garden, entry) {
+            const gardenIndex = appData.kindergartens.indexOf(garden);
+            if (gardenIndex < 0) return;
+            activeView = 'garden';
+            activeTab = gardenIndex;
+            render();
+            editEntry(entry);
         }
 
         function normalizeAttendanceTime(value) {
