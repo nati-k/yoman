@@ -77,7 +77,7 @@
         .activities-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 9px; }
         .activities-head span { font-size: .76rem; font-weight: 800; color: var(--muted); }
         .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
-        .chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); font-size: .8rem; font-weight: 800; }
+        .chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid color-mix(in srgb, var(--activity-color) 35%, white); border-inline-start: 4px solid var(--activity-color); border-radius: 10px; background: color-mix(in srgb, var(--activity-color) 12%, white); color: var(--text); font-size: .8rem; font-weight: 800; }
         .chip button { border: 0; background: transparent; color: inherit; font-size: 1rem; line-height: 1; cursor: pointer; padding: 0 2px; }
         .chip-add { border: 1px dashed var(--primary); background: white; color: var(--primary); padding: 9px 14px; border-radius: 999px; font-size: .82rem; font-weight: 800; cursor: pointer; min-height: 40px; }
         .chip-empty { font-size: .8rem; color: var(--muted); padding: 6px 0; }
@@ -114,7 +114,7 @@
         .entry-actions { display: flex; align-items: center; gap: 6px; flex: none; }
         .entry-text { font-size: .92rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
         .entry-activities { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
-        .entry-activity-tag { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); font-size: .73rem; font-weight: 800; }
+        .entry-activity-tag { display: inline-flex; align-items: center; padding: 4px 9px; border: 1px solid color-mix(in srgb, var(--activity-color) 35%, white); border-inline-start: 4px solid var(--activity-color); border-radius: 8px; background: color-mix(in srgb, var(--activity-color) 12%, white); color: var(--text); font-size: .73rem; font-weight: 800; }
         .reported-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 11px; background: white; color: var(--muted); font-size: .78rem; font-weight: 800; cursor: pointer; min-height: 40px; }
         .reported-toggle.is-on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-dark); }
         .reported-toggle input { width: 16px; height: 16px; accent-color: var(--primary); }
@@ -146,9 +146,9 @@
         .sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
         .sheet-head h3 { font-size: 1rem; font-weight: 800; }
         .sheet-options { display: grid; gap: 8px; margin-bottom: 16px; }
-        .sheet-option { display: flex; align-items: center; gap: 10px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 13px; font-size: .9rem; font-weight: 700; color: var(--text); cursor: pointer; min-height: 52px; }
-        .sheet-option:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-dark); font-weight: 800; }
-        .sheet-option input { width: 19px; height: 19px; accent-color: var(--primary); flex: none; }
+        .sheet-option { display: flex; align-items: center; gap: 10px; padding: 13px 14px; border: 1px solid var(--line); border-inline-start: 4px solid var(--activity-color); border-radius: 13px; font-size: .9rem; font-weight: 700; color: var(--text); background: color-mix(in srgb, var(--activity-color) 5%, white); cursor: pointer; min-height: 52px; }
+        .sheet-option:has(input:checked) { border-color: var(--activity-color); border-inline-start-width: 6px; background: color-mix(in srgb, var(--activity-color) 14%, white); font-weight: 800; box-shadow: 0 0 0 2px color-mix(in srgb, var(--activity-color) 12%, transparent); }
+        .sheet-option input { width: 19px; height: 19px; accent-color: var(--activity-color); flex: none; }
 
         /* Dialog */
         .dialog-overlay { display: none; position: fixed; inset: 0; background: rgba(10,40,38,.45); z-index: 90; align-items: center; justify-content: center; padding: 22px; }
@@ -346,7 +346,7 @@
             'מחלה / חופשה': '#be123c',
             'מילוי טפסים': '#c2410c',
             'פיתוח תכנים': '#4d7c0f',
-            'הכשרה ופיתוח צוותים': '#0891b2',
+            'הכשרה ופיתוח צוותים': '#0e7490',
             'ממשקים וניהול': '#7c3aed'
         };
 
@@ -472,7 +472,7 @@
 
         function openActivitySheet() {
             document.getElementById('activity-options').innerHTML = ATTENDANCE_CATEGORIES
-                .map(activity => `<label class="sheet-option"><input type="checkbox" value="${escapeHtml(activity)}" ${selectedActivities.includes(activity) ? 'checked' : ''}>${escapeHtml(activity)}</label>`)
+                .map(activity => `<label class="sheet-option" style="--activity-color:${getActivityColor(activity)}"><input type="checkbox" value="${escapeHtml(activity)}" ${selectedActivities.includes(activity) ? 'checked' : ''}>${escapeHtml(activity)}</label>`)
                 .join('');
             document.getElementById('activity-sheet').classList.add('is-open');
         }
@@ -498,6 +498,7 @@
             selectedActivities.forEach(activity => {
                 const chip = document.createElement('span');
                 chip.className = 'chip';
+                chip.style.setProperty('--activity-color', getActivityColor(activity));
                 chip.innerHTML = `${escapeHtml(activity)}<button type="button" aria-label="הסר">✕</button>`;
                 chip.querySelector('button').onclick = () => {
                     selectedActivities = selectedActivities.filter(item => item !== activity);
@@ -506,6 +507,10 @@
                 };
                 container.appendChild(chip);
             });
+        }
+
+        function getActivityColor(activity) {
+            return ACTIVITY_COLORS[activity] || '#64748b';
         }
 
         function renderGardenSelect() {
@@ -1030,7 +1035,7 @@
             const card = document.createElement('div');
             card.className = 'entry-card';
             const tags = (entry.activity || '').split(',').map(value => value.trim()).filter(Boolean)
-                .map(value => `<span class="entry-activity-tag">${escapeHtml(value)}</span>`).join('');
+                .map(value => `<span class="entry-activity-tag" style="--activity-color:${getActivityColor(value)}">${escapeHtml(value)}</span>`).join('');
             card.innerHTML = `
                 <div class="entry-head">
                     <div class="entry-meta">
