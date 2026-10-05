@@ -239,6 +239,7 @@
                         <label class="field"><span>מתאריך</span><input type="date" id="filter-from"></label>
                         <label class="field"><span>עד תאריך</span><input type="date" id="filter-to"></label>
                     </div>
+                    <label class="field" style="margin-bottom: 14px;"><span>מילות חיפוש</span><input type="search" id="filter-keywords" placeholder="למשל: פגישה הורים חצר"></label>
                     <div class="search-actions">
                         <button id="manage-gardens" class="btn-secondary" type="button">ניהול גנים</button>
                     </div>
@@ -326,6 +327,7 @@
             ['filter-from', 'filter-to'].forEach(id => {
                 document.getElementById(id).addEventListener('change', renderReports);
             });
+            document.getElementById('filter-keywords').addEventListener('input', renderReports);
             document.getElementById('manage-gardens').addEventListener('click', openGardensSheet);
             document.getElementById('close-gardens').addEventListener('click', closeGardensSheet);
             document.getElementById('gardens-sheet').addEventListener('click', event => {
@@ -807,11 +809,14 @@
             }
 
             const gardenFilter = document.getElementById('filter-garden').value;
+            const keywords = document.getElementById('filter-keywords').value.trim().toLocaleLowerCase('he').split(/\s+/).filter(Boolean);
             const gardens = gardenFilter ? [gardenFilter] : appData.kindergartens;
             const matches = [];
             gardens.forEach(garden => {
                 (appData.entries[garden] || []).forEach(entry => {
                     if (range && (entry.date < range.from || entry.date > range.to)) return;
+                    const searchableText = `${entry.text || ''} ${entry.activity || ''}`.toLocaleLowerCase('he');
+                    if (!keywords.every(keyword => searchableText.includes(keyword))) return;
                     matches.push({ garden, entry });
                 });
             });
@@ -827,7 +832,7 @@
             const summary = document.createElement('div');
             summary.className = 'muted-note';
             summary.style.marginBottom = '10px';
-            summary.textContent = `${formatEntryCount(matches.length)} · ${scope} · ${period}`;
+            summary.textContent = `${formatEntryCount(matches.length)} · ${scope} · ${period}${keywords.length ? ` · מילות חיפוש: ${keywords.join(', ')}` : ''}`;
             results.appendChild(summary);
             matches.forEach(({ garden, entry }) => results.appendChild(buildEntryCard(garden, entry, !gardenFilter)));
         }
