@@ -87,9 +87,26 @@
         .save-bar .btn { min-width: 160px; }
 
         .search-actions { display: flex; gap: 8px; justify-content: flex-end; }
+        .report-calendar { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+        .calendar-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .calendar-head strong { font-size: .9rem; }
+        .calendar-nav { display: flex; gap: 6px; }
+        .calendar-nav button { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--text); font-size: 1.1rem; cursor: pointer; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; direction: rtl; }
+        .calendar-weekday { text-align: center; padding: 5px 0; color: var(--muted); font-size: .7rem; font-weight: 800; }
+        .calendar-day { min-width: 0; min-height: 54px; padding: 5px 3px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--text); font: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .calendar-day:disabled { cursor: default; }
+        .calendar-day.has-reports { background: white; border-color: var(--line); }
+        .calendar-day.is-selected { border-color: var(--primary); background: var(--primary-soft); }
+        .calendar-day-number { font-size: .78rem; font-weight: 700; line-height: 1; }
+        .calendar-dots { min-height: 7px; display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
+        .calendar-dot, .activity-legend-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+        .activity-legend { display: flex; flex-wrap: wrap; gap: 7px 12px; margin-top: 12px; }
+        .activity-legend-item { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: .68rem; font-weight: 700; }
 
         /* Entry cards */
-        .entry-card { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; margin-bottom: 10px; animation: rise .3s ease both; }
+        .entry-card { position: relative; z-index: 0; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; margin-bottom: 10px; animation: rise .3s ease both; }
+        .entry-card:has(.card-menu.is-open) { z-index: 40; }
         .entry-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 9px; }
         .entry-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
         .entry-garden { font-size: .85rem; font-weight: 800; color: var(--primary-dark); }
@@ -242,6 +259,18 @@
                     <label class="field" style="margin-bottom: 14px;"><span>מילות חיפוש</span><input type="search" id="filter-keywords" placeholder="למשל: פגישה הורים חצר"></label>
                     <div class="search-actions">
                         <button id="manage-gardens" class="btn-secondary" type="button">ניהול גנים</button>
+                        <button id="clear-report-filters" class="btn-secondary" type="button">נקה חיפוש</button>
+                    </div>
+                    <div class="report-calendar">
+                        <div class="calendar-head">
+                            <strong id="calendar-month-label"></strong>
+                            <div class="calendar-nav">
+                                <button id="calendar-prev" type="button" aria-label="החודש הקודם" title="החודש הקודם">‹</button>
+                                <button id="calendar-next" type="button" aria-label="החודש הבא" title="החודש הבא">›</button>
+                            </div>
+                        </div>
+                        <div id="report-calendar" class="calendar-grid"></div>
+                        <div id="calendar-legend" class="activity-legend"></div>
                     </div>
                 </div>
                 <div id="reports-results"></div>
@@ -310,6 +339,16 @@
         let editingEntry = null;
         let editingGarden = null;
         let activeMicButtonId = 'mic-btn';
+        let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        const ACTIVITY_COLORS = {
+            'מעטפת מקצועית': '#0f766e',
+            'עבודה עם הורים וגמישות': '#2563eb',
+            'מחלה / חופשה': '#be123c',
+            'מילוי טפסים': '#c2410c',
+            'פיתוח תכנים': '#4d7c0f',
+            'הכשרה ופיתוח צוותים': '#0891b2',
+            'ממשקים וניהול': '#7c3aed'
+        };
 
         document.getElementById('entry-date').valueAsDate = new Date();
         initUi();
@@ -319,6 +358,9 @@
                 btn.addEventListener('click', () => setView(btn.dataset.view));
             });
             document.getElementById('filter-garden').addEventListener('change', renderReports);
+            document.getElementById('clear-report-filters').addEventListener('click', clearReportFilters);
+            document.getElementById('calendar-prev').addEventListener('click', () => changeCalendarMonth(-1));
+            document.getElementById('calendar-next').addEventListener('click', () => changeCalendarMonth(1));
             document.getElementById('filter-range').addEventListener('change', () => {
                 const isCustom = document.getElementById('filter-range').value === 'custom';
                 document.getElementById('custom-range').style.display = isCustom ? 'grid' : 'none';
@@ -797,8 +839,109 @@
             if (previous && appData.kindergartens.includes(previous)) select.value = previous;
         }
 
+        function clearReportFilters() {
+            document.getElementById('filter-garden').value = '';
+            document.getElementById('filter-range').value = 'month';
+            document.getElementById('filter-from').value = '';
+            document.getElementById('filter-to').value = '';
+            document.getElementById('filter-keywords').value = '';
+            document.getElementById('custom-range').style.display = 'none';
+            calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+            renderReports();
+        }
+
+        function changeCalendarMonth(offset) {
+            calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + offset, 1);
+            renderReportCalendar();
+        }
+
+        function renderReportCalendar() {
+            const calendar = document.getElementById('report-calendar');
+            if (!calendar) return;
+            calendar.innerHTML = '';
+
+            const year = calendarMonth.getFullYear();
+            const month = calendarMonth.getMonth();
+            document.getElementById('calendar-month-label').textContent = calendarMonth.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+
+            const weekdays = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
+            weekdays.forEach(day => {
+                const label = document.createElement('div');
+                label.className = 'calendar-weekday';
+                label.textContent = day;
+                calendar.appendChild(label);
+            });
+
+            const gardenFilter = document.getElementById('filter-garden').value;
+            const gardens = gardenFilter ? [gardenFilter] : appData.kindergartens;
+            const activitiesByDate = new Map();
+            gardens.forEach(garden => {
+                (appData.entries[garden] || []).forEach(entry => {
+                    if (!entry.date || !entry.date.startsWith(`${year}-${String(month + 1).padStart(2, '0')}-`)) return;
+                    if (!activitiesByDate.has(entry.date)) activitiesByDate.set(entry.date, new Set());
+                    const activities = (entry.activity || '').split(',').map(value => value.trim()).filter(Boolean);
+                    if (activities.length) activities.forEach(activity => activitiesByDate.get(entry.date).add(activity));
+                    else activitiesByDate.get(entry.date).add('ללא פעילות');
+                });
+            });
+
+            const customDate = document.getElementById('filter-range').value === 'custom' &&
+                document.getElementById('filter-from').value === document.getElementById('filter-to').value
+                ? document.getElementById('filter-from').value
+                : '';
+            const firstWeekday = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            for (let blank = 0; blank < firstWeekday; blank++) {
+                const spacer = document.createElement('div');
+                spacer.setAttribute('aria-hidden', 'true');
+                calendar.appendChild(spacer);
+            }
+
+            for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber++) {
+                const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNumber).padStart(2, '0')}`;
+                const activities = [...(activitiesByDate.get(date) || [])];
+                const dayButton = document.createElement('button');
+                dayButton.type = 'button';
+                dayButton.className = `calendar-day${activities.length ? ' has-reports' : ''}${date === customDate ? ' is-selected' : ''}`;
+                dayButton.setAttribute('aria-label', `${dayNumber} ${calendarMonth.toLocaleDateString('he-IL', { month: 'long' })}${activities.length ? `, ${activities.length} פעילויות בדיווח` : ''}`);
+                dayButton.title = activities.length ? activities.join(', ') : `${dayNumber}`;
+                dayButton.innerHTML = `<span class="calendar-day-number">${dayNumber}</span><span class="calendar-dots"></span>`;
+                const dots = dayButton.querySelector('.calendar-dots');
+                activities.slice(0, 7).forEach(activity => {
+                    const dot = document.createElement('span');
+                    dot.className = 'calendar-dot';
+                    dot.style.backgroundColor = ACTIVITY_COLORS[activity] || '#94a3b8';
+                    dot.title = activity;
+                    dots.appendChild(dot);
+                });
+                dayButton.onclick = () => {
+                    document.getElementById('filter-range').value = 'custom';
+                    document.getElementById('filter-from').value = date;
+                    document.getElementById('filter-to').value = date;
+                    document.getElementById('custom-range').style.display = 'grid';
+                    renderReports();
+                };
+                calendar.appendChild(dayButton);
+            }
+
+            const legend = document.getElementById('calendar-legend');
+            legend.innerHTML = '';
+            ATTENDANCE_CATEGORIES.forEach(activity => {
+                const item = document.createElement('span');
+                item.className = 'activity-legend-item';
+                item.innerHTML = `<span class="activity-legend-dot" style="background:${ACTIVITY_COLORS[activity]}"></span>${escapeHtml(activity)}`;
+                legend.appendChild(item);
+            });
+            const noActivityItem = document.createElement('span');
+            noActivityItem.className = 'activity-legend-item';
+            noActivityItem.innerHTML = '<span class="activity-legend-dot" style="background:#94a3b8"></span>ללא פעילות';
+            legend.appendChild(noActivityItem);
+        }
+
         function renderReports() {
             renderFilterGardenSelect();
+            renderReportCalendar();
             const results = document.getElementById('reports-results');
             results.innerHTML = '';
 
