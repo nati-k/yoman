@@ -52,10 +52,10 @@
         .muted-note { font-size: .78rem; color: var(--muted); font-weight: 700; }
 
         /* Form fields */
-        .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+        .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
         .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: .76rem; font-weight: 800; color: var(--muted); }
         .field select, .field input { width: 100%; min-width: 0; max-width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: .95rem; color: var(--text); background: var(--surface-soft); outline: none; font-family: inherit; }
-        .field input[type="date"] { direction: ltr; text-align: left; }
+        .field input[type="date"] { display: block; direction: rtl; text-align: right; align-self: stretch; box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
         .field select:focus, .field input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(15,118,110,.12); background: white; }
         .composer { position: relative; margin-bottom: 14px; }
         textarea { width: 100%; min-height: 150px; border: 1px solid var(--line); border-radius: 16px; padding: 16px 16px 56px; font-size: 1rem; line-height: 1.6; resize: vertical; background: var(--surface-soft); color: var(--text); outline: none; transition: border .2s, box-shadow .2s; }
@@ -172,7 +172,7 @@
             h1 { font-size: 1.05rem; }
             .app-nav { position: fixed; bottom: 0; left: 0; right: 0; margin: 0; border-radius: 18px 18px 0 0; border-bottom: 0; padding: 7px 10px calc(7px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 24px rgba(20,74,70,.13); z-index: 60; }
             .nav-btn { flex-direction: column; gap: 2px; font-size: .7rem; min-height: 52px; }
-            .field-row { grid-template-columns: 1fr; }
+            .field-row { grid-template-columns: minmax(0, 1fr); }
             .save-bar { position: sticky; bottom: calc(var(--nav-height) + 6px); padding: 8px 0; background: linear-gradient(to top, var(--bg) 62%, rgba(244,247,246,0)); }
             .save-bar .btn { flex: 1; min-width: 0; }
             .entry-actions { gap: 5px; }
@@ -472,25 +472,10 @@
 
         function getGardenColors(gardens) {
             const colors = new Map();
-            const usedColors = new Set();
-            [...new Set(gardens)].sort().forEach(gardenName => {
-                let hash = 0;
-                for (let index = 0; index < gardenName.length; index++) {
-                    hash = (hash * 31 + gardenName.charCodeAt(index)) >>> 0;
-                }
-
-                let attempt = 0;
-                let color;
-                do {
-                    const hue = (hash % 360 + attempt * 137) % 360;
-                    const saturation = 55 + ((hash >>> 9) + attempt) % 25;
-                    const lightness = 32 + ((hash >>> 17) + attempt) % 16;
-                    color = `hsl(${hue} ${saturation}% ${lightness}%)`;
-                    attempt++;
-                } while (usedColors.has(color));
-
-                usedColors.add(color);
-                colors.set(gardenName, color);
+            const uniqueGardens = [...new Set(gardens)].sort();
+            uniqueGardens.forEach((gardenName, index) => {
+                const hue = index * 360 / uniqueGardens.length;
+                colors.set(gardenName, `hsl(${hue.toFixed(2)} 68% 40%)`);
             });
             return colors;
         }
@@ -861,7 +846,7 @@
 
             const gardenFilter = document.getElementById('filter-garden').value;
             const gardens = gardenFilter ? [gardenFilter] : appData.kindergartens;
-            const gardenColors = getGardenColors(gardens);
+            const gardenColors = getGardenColors(appData.kindergartens);
             const gardensByDate = new Map();
             gardens.forEach(garden => {
                 (appData.entries[garden] || []).forEach(entry => {
