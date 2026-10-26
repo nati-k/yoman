@@ -469,6 +469,14 @@
             return ACTIVITY_COLORS[activity] || '#64748b';
         }
 
+        function getGardenColor(gardenName) {
+            let hash = 0;
+            for (let index = 0; index < gardenName.length; index++) {
+                hash = (hash * 31 + gardenName.charCodeAt(index)) >>> 0;
+            }
+            return `hsl(${hash % 360} 62% 40%)`;
+        }
+
         function renderGardenSelect() {
             const select = document.getElementById('entry-garden');
             const previous = select.value;
@@ -835,14 +843,12 @@
 
             const gardenFilter = document.getElementById('filter-garden').value;
             const gardens = gardenFilter ? [gardenFilter] : appData.kindergartens;
-            const activitiesByDate = new Map();
+            const gardensByDate = new Map();
             gardens.forEach(garden => {
                 (appData.entries[garden] || []).forEach(entry => {
                     if (!entry.date || !entry.date.startsWith(`${year}-${String(month + 1).padStart(2, '0')}-`)) return;
-                    if (!activitiesByDate.has(entry.date)) activitiesByDate.set(entry.date, new Set());
-                    const activities = (entry.activity || '').split(',').map(value => value.trim()).filter(Boolean);
-                    if (activities.length) activities.forEach(activity => activitiesByDate.get(entry.date).add(activity));
-                    else activitiesByDate.get(entry.date).add('ללא פעילות');
+                    if (!gardensByDate.has(entry.date)) gardensByDate.set(entry.date, new Set());
+                    gardensByDate.get(entry.date).add(garden);
                 });
             });
 
@@ -861,19 +867,19 @@
 
             for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber++) {
                 const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNumber).padStart(2, '0')}`;
-                const activities = [...(activitiesByDate.get(date) || [])];
+                const updatedGardens = [...(gardensByDate.get(date) || [])];
                 const dayButton = document.createElement('button');
                 dayButton.type = 'button';
-                dayButton.className = `calendar-day${activities.length ? ' has-reports' : ''}${date === customDate ? ' is-selected' : ''}`;
-                dayButton.setAttribute('aria-label', `${dayNumber} ${calendarMonth.toLocaleDateString('he-IL', { month: 'long' })}${activities.length ? `, ${activities.length} פעילויות בדיווח` : ''}`);
-                dayButton.title = activities.length ? activities.join(', ') : `${dayNumber}`;
+                dayButton.className = `calendar-day${updatedGardens.length ? ' has-reports' : ''}${date === customDate ? ' is-selected' : ''}`;
+                dayButton.setAttribute('aria-label', `${dayNumber} ${calendarMonth.toLocaleDateString('he-IL', { month: 'long' })}${updatedGardens.length ? `, ${updatedGardens.length} גנים עם עדכון` : ''}`);
+                dayButton.title = updatedGardens.length ? updatedGardens.join(', ') : `${dayNumber}`;
                 dayButton.innerHTML = `<span class="calendar-day-number">${dayNumber}</span><span class="calendar-dots"></span>`;
                 const dots = dayButton.querySelector('.calendar-dots');
-                activities.slice(0, 7).forEach(activity => {
+                updatedGardens.forEach(garden => {
                     const dot = document.createElement('span');
                     dot.className = 'calendar-dot';
-                    dot.style.backgroundColor = ACTIVITY_COLORS[activity] || '#94a3b8';
-                    dot.title = activity;
+                    dot.style.backgroundColor = getGardenColor(garden);
+                    dot.title = garden;
                     dots.appendChild(dot);
                 });
                 dayButton.onclick = () => {
@@ -888,16 +894,12 @@
 
             const legend = document.getElementById('calendar-legend');
             legend.innerHTML = '';
-            ATTENDANCE_CATEGORIES.forEach(activity => {
+            gardens.forEach(garden => {
                 const item = document.createElement('span');
                 item.className = 'activity-legend-item';
-                item.innerHTML = `<span class="activity-legend-dot" style="background:${ACTIVITY_COLORS[activity]}"></span>${escapeHtml(activity)}`;
+                item.innerHTML = `<span class="activity-legend-dot" style="background:${getGardenColor(garden)}"></span>${escapeHtml(garden)}`;
                 legend.appendChild(item);
             });
-            const noActivityItem = document.createElement('span');
-            noActivityItem.className = 'activity-legend-item';
-            noActivityItem.innerHTML = '<span class="activity-legend-dot" style="background:#94a3b8"></span>ללא פעילות';
-            legend.appendChild(noActivityItem);
         }
 
         function renderReports() {
