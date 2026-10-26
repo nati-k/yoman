@@ -27,7 +27,7 @@
         .google-btn:hover { background: #0b2928; transform: translateY(-2px); }
 
         /* Shell */
-        #app-screen { display: none; }
+        #app-screen { display: none; padding-bottom: calc(var(--nav-height) + 16px); }
         header { background: rgba(14, 79, 76, .96); color: white; padding: 14px 20px; box-shadow: 0 7px 25px rgba(20, 74, 70, .16); position: sticky; top: 0; z-index: 50; backdrop-filter: blur(12px); }
         .header-content { max-width: 900px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 14px; }
         h1 { font-size: 1.2rem; font-weight: 800; }
@@ -42,7 +42,7 @@
         .view.is-active { display: block; animation: rise .28s ease both; }
 
         /* Navigation */
-        .app-nav { max-width: 900px; margin: 14px auto 0; padding: 6px; display: flex; gap: 6px; background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 8px 20px rgba(20,74,70,.06); }
+        .app-nav { position: fixed; bottom: 0; left: 16px; right: 16px; z-index: 60; max-width: 900px; margin: 0 auto; padding: 6px; display: flex; gap: 6px; background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 8px 20px rgba(20,74,70,.06); }
         .nav-btn { flex: 1; border: 0; background: transparent; color: var(--muted); font-size: .88rem; font-weight: 800; border-radius: 12px; cursor: pointer; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 7px; transition: background .2s, color .2s; }
         .nav-btn.is-active { background: var(--primary); color: white; }
         .nav-ico { font-size: 1.05rem; }
@@ -52,10 +52,11 @@
         .muted-note { font-size: .78rem; color: var(--muted); font-weight: 700; }
 
         /* Form fields */
-        .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
-        .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: .76rem; font-weight: 800; color: var(--muted); }
+        .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; margin-bottom: 14px; }
+        .field { display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; font-size: .76rem; font-weight: 800; color: var(--muted); }
         .field select, .field input { width: 100%; min-width: 0; max-width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: .95rem; color: var(--text); background: var(--surface-soft); outline: none; font-family: inherit; }
         .field input[type="date"] { display: block; direction: rtl; text-align: right; align-self: stretch; box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
+        .field input[type="date"]::-webkit-date-and-time-value { width: 100%; text-align: right; }
         .field select:focus, .field input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(15,118,110,.12); background: white; }
         .composer { position: relative; margin-bottom: 14px; }
         textarea { width: 100%; min-height: 150px; border: 1px solid var(--line); border-radius: 16px; padding: 16px 16px 56px; font-size: 1rem; line-height: 1.6; resize: vertical; background: var(--surface-soft); color: var(--text); outline: none; transition: border .2s, box-shadow .2s; }
@@ -166,11 +167,10 @@
         @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
         @media (max-width: 720px) {
-            body { padding-bottom: calc(var(--nav-height) + 12px); }
             main { padding: 14px 14px 20px; }
             .card { padding: 16px; border-radius: 18px; }
             h1 { font-size: 1.05rem; }
-            .app-nav { position: fixed; bottom: 0; left: 0; right: 0; margin: 0; border-radius: 18px 18px 0 0; border-bottom: 0; padding: 7px 10px calc(7px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 24px rgba(20,74,70,.13); z-index: 60; }
+            .app-nav { left: 0; right: 0; margin: 0; border-radius: 18px 18px 0 0; border-bottom: 0; padding: 7px 10px calc(7px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 24px rgba(20,74,70,.13); }
             .nav-btn { flex-direction: column; gap: 2px; font-size: .7rem; min-height: 52px; }
             .field-row { grid-template-columns: minmax(0, 1fr); }
             .save-bar { position: sticky; bottom: calc(var(--nav-height) + 6px); padding: 8px 0; background: linear-gradient(to top, var(--bg) 62%, rgba(244,247,246,0)); }
