@@ -53,8 +53,9 @@
 
         /* Form fields */
         .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-        .field { display: flex; flex-direction: column; gap: 6px; font-size: .76rem; font-weight: 800; color: var(--muted); }
-        .field select, .field input { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: .95rem; color: var(--text); background: var(--surface-soft); outline: none; font-family: inherit; }
+        .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: .76rem; font-weight: 800; color: var(--muted); }
+        .field select, .field input { width: 100%; min-width: 0; max-width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: .95rem; color: var(--text); background: var(--surface-soft); outline: none; font-family: inherit; }
+        .field input[type="date"] { direction: ltr; text-align: left; }
         .field select:focus, .field input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(15,118,110,.12); background: white; }
         .composer { position: relative; margin-bottom: 14px; }
         textarea { width: 100%; min-height: 150px; border: 1px solid var(--line); border-radius: 16px; padding: 16px 16px 56px; font-size: 1rem; line-height: 1.6; resize: vertical; background: var(--surface-soft); color: var(--text); outline: none; transition: border .2s, box-shadow .2s; }
@@ -240,7 +241,7 @@
                         <label class="field"><span>גן</span><select id="filter-garden"></select></label>
                         <label class="field"><span>תקופה</span>
                             <select id="filter-range">
-                                <option value="month">30 הימים האחרונים</option>
+                                <option value="month">החודש הנוכחי</option>
                                 <option value="week">7 הימים האחרונים</option>
                                 <option value="today">היום</option>
                                 <option value="all">הכל</option>
@@ -469,12 +470,29 @@
             return ACTIVITY_COLORS[activity] || '#64748b';
         }
 
-        function getGardenColor(gardenName) {
-            let hash = 0;
-            for (let index = 0; index < gardenName.length; index++) {
-                hash = (hash * 31 + gardenName.charCodeAt(index)) >>> 0;
-            }
-            return `hsl(${hash % 360} 62% 40%)`;
+        function getGardenColors(gardens) {
+            const colors = new Map();
+            const usedColors = new Set();
+            [...new Set(gardens)].sort().forEach(gardenName => {
+                let hash = 0;
+                for (let index = 0; index < gardenName.length; index++) {
+                    hash = (hash * 31 + gardenName.charCodeAt(index)) >>> 0;
+                }
+
+                let attempt = 0;
+                let color;
+                do {
+                    const hue = (hash % 360 + attempt * 137) % 360;
+                    const saturation = 55 + ((hash >>> 9) + attempt) % 25;
+                    const lightness = 32 + ((hash >>> 17) + attempt) % 16;
+                    color = `hsl(${hue} ${saturation}% ${lightness}%)`;
+                    attempt++;
+                } while (usedColors.has(color));
+
+                usedColors.add(color);
+                colors.set(gardenName, color);
+            });
+            return colors;
         }
 
         function renderGardenSelect() {
@@ -795,8 +813,8 @@
             }
 
             const from = new Date(today);
+            if (mode === 'month') from.setDate(1);
             if (mode === 'week') from.setDate(today.getDate() - 6);
-            if (mode === 'month') from.setDate(today.getDate() - 29);
             return { from: toIsoDate(from), to: toIsoDate(today) };
         }
 
@@ -843,6 +861,7 @@
 
             const gardenFilter = document.getElementById('filter-garden').value;
             const gardens = gardenFilter ? [gardenFilter] : appData.kindergartens;
+            const gardenColors = getGardenColors(gardens);
             const gardensByDate = new Map();
             gardens.forEach(garden => {
                 (appData.entries[garden] || []).forEach(entry => {
@@ -878,7 +897,7 @@
                 updatedGardens.forEach(garden => {
                     const dot = document.createElement('span');
                     dot.className = 'calendar-dot';
-                    dot.style.backgroundColor = getGardenColor(garden);
+                    dot.style.backgroundColor = gardenColors.get(garden);
                     dot.title = garden;
                     dots.appendChild(dot);
                 });
@@ -897,7 +916,7 @@
             gardens.forEach(garden => {
                 const item = document.createElement('span');
                 item.className = 'activity-legend-item';
-                item.innerHTML = `<span class="activity-legend-dot" style="background:${getGardenColor(garden)}"></span>${escapeHtml(garden)}`;
+                item.innerHTML = `<span class="activity-legend-dot" style="background:${gardenColors.get(garden)}"></span>${escapeHtml(garden)}`;
                 legend.appendChild(item);
             });
         }
