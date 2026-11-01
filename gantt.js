@@ -11,7 +11,7 @@
         ["סופרוויז'ן ללמוד לחיות ביחד/הורים", '#E8DDF2'],
         ['העברת הכשרות לצוותים והורים', '#D9E1F2']
     ].map(([name, color], index) => ({ id: `type-${index}`, name, color }));
-    const state = { owner: null, model: null, file: null, dirty: false, busy: false, timer: null, saving: null, day: new Date().getDay() % 5 };
+    const state = { owner: null, model: null, file: null, dirty: false, busy: false, timer: null, saving: null, day: new Date().getDay() % 5, exportFile: null, exportPromise: null, exportVersion: 0, exportError: false };
     const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const html = value => escapeHtml(String(value ?? ''));
     const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
@@ -25,6 +25,7 @@
     const title = week => `גאנט למדריכה ${shortDate(week)}–${shortDate(shift(week, 4))}`;
     const blank = week => ({ version: 1, week, activities: structuredClone(DEFAULTS), events: [] });
     const draftKey = week => `yoman_gantt:${state.owner}:${week}`;
+    const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const redrawIcons = () => globalThis.lucide?.createIcons();
     document.addEventListener('DOMContentLoaded', redrawIcons, { once: true });
 
@@ -308,6 +309,9 @@
     function mutate(change) {
         if (state.busy || !state.model) return;
         change(state.model);
+        state.exportVersion++;
+        state.exportFile = null;
+        state.exportError = false;
         state.dirty = true;
         persist();
         render();
@@ -316,6 +320,28 @@
         state.timer = setTimeout(() => flush().catch(reportError), 700);
     }
     function reportError(error) { status(error.message, true); showToast(error.message, true); renderButtons(); }
+
+    async function prepareIosDownload() {
+        if (!isIOS() || !state.model || !state.file || state.dirty || state.saving || state.exportFile || state.exportPromise) return;
+        const version = state.exportVersion;
+        const owner = state.owner;
+        const model = structuredClone(state.model);
+        const promise = (async () => new File([await templateXlsx(model)], `${title(model.week)}.xlsx`, { type: XLSX_MIME }))();
+        state.exportPromise = promise;
+        state.exportError = false;
+        renderButtons();
+        try {
+            const file = await promise;
+            if (state.exportVersion === version && state.owner === owner && state.model?.week === model.week && !state.dirty) state.exportFile = file;
+        } catch (error) {
+            state.exportError = true;
+            throw error;
+        } finally {
+            if (state.exportPromise === promise) state.exportPromise = null;
+            renderButtons();
+        }
+        if (state.exportVersion !== version && state.file && !state.dirty) queueMicrotask(() => prepareIosDownload().catch(reportError));
+    }
 
     async function flush() {
         clearTimeout(state.timer);
@@ -366,6 +392,7 @@
         try { await state.saving; }
         finally { state.saving = null; renderButtons(); }
         if (state.dirty) return flush();
+        prepareIosDownload().catch(reportError);
     }
 
     async function loadWeek(value) {
@@ -391,13 +418,18 @@
                 model = validateModel(draft.model, week);
                 dirty = true;
             }
-            Object.assign(state, { file, model, dirty });
+            state.exportVersion++;
+            Object.assign(state, { file, model, dirty, exportFile: null, exportError: false });
             render();
             status(dirty ? 'טיוטה מקומית שטרם נשמרה' : file ? 'נשמר בדרייב' : 'שבוע חדש');
         } catch (error) {
             if (oldWeek) document.getElementById('gantt-week').value = oldWeek;
             reportError(error);
-        } finally { state.busy = false; renderButtons(); }
+        } finally {
+            state.busy = false;
+            renderButtons();
+            if (state.file && !state.dirty) prepareIosDownload().catch(reportError);
+        }
     }
 
     async function open() {
@@ -412,7 +444,8 @@
 
     function reset() {
         clearTimeout(state.timer);
-        Object.assign(state, { owner: null, model: null, file: null, dirty: false });
+        state.exportVersion++;
+        Object.assign(state, { owner: null, model: null, file: null, dirty: false, exportFile: null, exportPromise: null, exportError: false });
         document.getElementById('gantt-editor')?.close();
         if (document.getElementById('gantt-board')) document.getElementById('gantt-board').innerHTML = '';
     }
@@ -421,6 +454,8 @@
         const blocked = state.busy || Boolean(state.saving) || !state.model;
         document.querySelectorAll('#view-gantt button, #view-gantt input').forEach(button => { button.disabled = blocked; });
         ['gantt-download', 'gantt-drive'].forEach(id => { document.getElementById(id).disabled = blocked || (!state.file && !state.dirty); });
+        const downloadButton = document.getElementById('gantt-download');
+        if (isIOS() && state.model && !state.exportFile && !state.exportError) downloadButton.disabled = true;
         document.getElementById('gantt-copy').hidden = Boolean(state.file || state.model?.events.length);
         const retry = document.getElementById('gantt-retry');
         retry.hidden = Boolean(state.model && !state.dirty);
@@ -501,6 +536,20 @@
 
     async function download() {
         if (state.busy || state.saving) return;
+        if (isIOS()) {
+            if (!state.exportFile) {
+                if (!state.exportPromise) prepareIosDownload().catch(reportError);
+                return;
+            }
+            if (navigator.share && navigator.canShare?.({ files: [state.exportFile] })) {
+                const sharing = navigator.share({ files: [state.exportFile] });
+                return sharing.then(() => status('הקובץ נשלח לשמירה'), error => {
+                    if (error.name !== 'AbortError') reportError(error);
+                });
+            }
+            showToast('שיתוף קובץ אינו נתמך בדפדפן הזה. פתח את הפורטל ב-Safari.', true);
+            return;
+        }
         try {
             state.dirty = true;
             persist();
@@ -529,7 +578,7 @@
         document.getElementById('gantt-add').onclick = () => editEvent();
         document.getElementById('gantt-copy').onclick = safe(copyPrevious);
         document.getElementById('gantt-retry').onclick = safe(() => state.model ? flush() : open());
-        document.getElementById('gantt-download').onclick = safe(download);
+        document.getElementById('gantt-download').onclick = () => { download().catch(reportError); };
         document.getElementById('gantt-drive').onclick = safe(async () => {
             await flush();
             const fileId = state.file.id;
