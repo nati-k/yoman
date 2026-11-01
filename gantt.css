@@ -34,6 +34,14 @@
 .gantt-event-time { white-space: nowrap; text-align: right; flex-shrink: 0; }
 .gantt-event-detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; flex-shrink: 0; }
 .gantt-event.is-compact .gantt-event-detail { display: none; }
+.gantt-resize { position: absolute; inset-inline: 0; z-index: 4; height: 12px; padding: 0; border: 0; background: transparent; cursor: ns-resize; touch-action: none; }
+.gantt-resize::after { content: ""; position: absolute; left: 50%; width: 24px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--event-color) 45%, #173b3a); transform: translateX(-50%); opacity: .8; }
+.gantt-resize-start { top: 0; }
+.gantt-resize-start::after { top: 3px; }
+.gantt-resize-end { bottom: 0; }
+.gantt-resize-end::after { bottom: 3px; }
+.gantt-resize:hover::after, .gantt-event.is-resizing .gantt-resize::after { width: 34px; height: 4px; opacity: 1; }
+.gantt-event.is-resizing { z-index: 8; }
 .gantt-move { position: absolute; left: 3px; top: 3px; width: 28px; height: 40px; display: grid; place-items: center; background: transparent; border: 0; cursor: grab; color: #47605b; touch-action: none; }
 .gantt-move svg { width: 16px !important; }
 .gantt-event.is-dragging { z-index: 10; opacity: .8; pointer-events: none; }

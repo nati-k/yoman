@@ -476,7 +476,7 @@
             const events = layout.events.map(event => {
                 const activity = model.activities.find(item => item.id === event.activity);
                 const description = [activity.name, event.place, `${time(event.start)}–${time(event.end)}`, event.text].filter(Boolean).join(' | ');
-                return `<div class="gantt-event${event.end - event.start === 30 ? ' is-compact' : ''}" style="--event-color:${activity.color};top:${(event.start - 480) / 30 * 48}px;height:${(event.end - event.start) / 30 * 48}px;inset-inline-start:${event.lane / layout.count * 100}%;width:${100 / layout.count}%" data-event="${html(event.id)}"><button class="gantt-event-edit" type="button" data-edit="${html(event.id)}" title="${html(description)}" aria-label="${html(description)}"><strong>${html(event.place || activity.name)}</strong><span class="gantt-event-time" dir="ltr">${time(event.start)}–${time(event.end)}</span><span class="gantt-event-detail">${html(event.place ? activity.name : event.text)}</span></button><button class="gantt-move" type="button" title="הזזת פעילות" aria-label="הזזת פעילות" data-move="${html(event.id)}">${icon('grip-vertical')}</button></div>`;
+                return `<div class="gantt-event${event.end - event.start === 30 ? ' is-compact' : ''}" style="--event-color:${activity.color};top:${(event.start - 480) / 30 * 48}px;height:${(event.end - event.start) / 30 * 48}px;inset-inline-start:${event.lane / layout.count * 100}%;width:${100 / layout.count}%" data-event="${html(event.id)}"><button class="gantt-event-edit" type="button" data-edit="${html(event.id)}" title="${html(description)}" aria-label="${html(description)}"><strong>${html(event.place || activity.name)}</strong><span class="gantt-event-time" dir="ltr">${time(event.start)}–${time(event.end)}</span><span class="gantt-event-detail">${html(event.place ? activity.name : event.text)}</span></button><button class="gantt-resize gantt-resize-start" type="button" title="שינוי שעת התחלה" aria-label="שינוי שעת התחלה" data-resize="start" data-event-id="${html(event.id)}"></button><button class="gantt-resize gantt-resize-end" type="button" title="שינוי שעת סיום" aria-label="שינוי שעת סיום" data-resize="end" data-event-id="${html(event.id)}"></button><button class="gantt-move" type="button" title="הזזת פעילות" aria-label="הזזת פעילות" data-move="${html(event.id)}">${icon('grip-vertical')}</button></div>`;
             }).join('');
             return `<div class="gantt-day ${index === state.day ? 'is-selected' : ''}"><div class="gantt-day-head"><strong>${day}</strong><span>${shortDate(shift(model.week, index))}</span></div><div class="gantt-day-body" data-column="${index}">${slots}${events}</div></div>`;
         }).join('');
@@ -620,23 +620,66 @@
         });
         let dragging = null;
         section.addEventListener('pointerdown', event => {
+            const resizeHandle = event.target.closest('[data-resize]');
+            if (resizeHandle && !state.busy && !state.saving) {
+                const modelEvent = state.model.events.find(item => item.id === resizeHandle.dataset.eventId);
+                if (!modelEvent) return;
+                dragging = { mode: 'resize', edge: resizeHandle.dataset.resize, event: modelEvent, element: resizeHandle.closest('.gantt-event'), y: event.clientY, pointerId: event.pointerId };
+                dragging.element.classList.add('is-resizing');
+                resizeHandle.setPointerCapture(event.pointerId);
+                event.preventDefault();
+                return;
+            }
             const handle = event.target.closest('[data-move]');
             if (!handle || state.busy || state.saving) return;
             const modelEvent = state.model.events.find(item => item.id === handle.dataset.move);
-            dragging = { event: modelEvent, element: handle.closest('.gantt-event'), x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+            if (!modelEvent) return;
+            dragging = { mode: 'move', event: modelEvent, element: handle.closest('.gantt-event'), x: event.clientX, y: event.clientY, pointerId: event.pointerId };
             handle.setPointerCapture(event.pointerId);
             event.preventDefault();
         });
         section.addEventListener('pointermove', event => {
             if (!dragging || event.pointerId !== dragging.pointerId) return;
-            dragging.element.style.transform = `translate(${event.clientX - dragging.x}px,${event.clientY - dragging.y}px)`;
-            dragging.element.classList.add('is-dragging');
+            if (dragging.mode === 'move') {
+                dragging.element.style.transform = `translate(${event.clientX - dragging.x}px,${event.clientY - dragging.y}px)`;
+                dragging.element.classList.add('is-dragging');
+                return;
+            }
+            const delta = Math.round((event.clientY - dragging.y) / 48) * 30;
+            const start = dragging.edge === 'start'
+                ? Math.max(480, Math.min(dragging.event.end - 30, dragging.event.start + delta))
+                : dragging.event.start;
+            const end = dragging.edge === 'end'
+                ? Math.min(1200, Math.max(dragging.event.start + 30, dragging.event.end + delta))
+                : dragging.event.end;
+            dragging.preview = { start, end };
+            dragging.element.style.top = `${(start - 480) / 30 * 48}px`;
+            dragging.element.style.height = `${(end - start) / 30 * 48}px`;
+            dragging.element.classList.add('is-resizing');
+            dragging.element.querySelector('.gantt-event-time').textContent = `${time(start)}–${time(end)}`;
         });
         const drop = event => {
             if (!dragging || event.pointerId !== dragging.pointerId) return;
             const current = dragging; dragging = null;
-            current.element.style.transform = ''; current.element.classList.remove('is-dragging');
-            if (event.type === 'pointercancel') return;
+            current.element.style.transform = '';
+            current.element.style.top = '';
+            current.element.style.height = '';
+            current.element.classList.remove('is-dragging', 'is-resizing');
+            if (event.type === 'pointercancel') {
+                current.element.querySelector('.gantt-event-time').textContent = `${time(current.event.start)}–${time(current.event.end)}`;
+                return;
+            }
+            if (current.mode === 'resize') {
+                if (current.preview && (current.preview.start !== current.event.start || current.preview.end !== current.event.end)) {
+                    mutate(model => {
+                        const resized = model.events.find(item => item.id === current.event.id);
+                        if (resized) Object.assign(resized, current.preview);
+                    });
+                } else {
+                    current.element.querySelector('.gantt-event-time').textContent = `${time(current.event.start)}–${time(current.event.end)}`;
+                }
+                return;
+            }
             const target = [...document.querySelectorAll('[data-column]')].find(column => { const rect = column.getBoundingClientRect(); return rect.width && event.clientX >= rect.left && event.clientX <= rect.right; });
             if (!target || Math.abs(event.clientY - current.y) + Math.abs(event.clientX - current.x) < 8) return;
             const duration = current.event.end - current.event.start;
