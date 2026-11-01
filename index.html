@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>יומן ליווי גנים - Google Sheets Sync</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <link rel="stylesheet" href="gantt.css">
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
     <style>
         :root {
             --primary: #0f766e; --primary-dark: #115e59; --primary-soft: #ccfbf1;
@@ -209,6 +211,7 @@
         <nav class="app-nav">
             <button class="nav-btn is-active" data-view="capture"><span class="nav-ico">✍️</span>תיעוד</button>
             <button class="nav-btn" data-view="reports"><span class="nav-ico">📋</span>דיווחים</button>
+            <button class="nav-btn" data-view="gantt"><span class="nav-ico"><i data-lucide="calendar-range" aria-hidden="true"></i></span>גאנט למדריכה</button>
         </nav>
 
         <main>
@@ -272,6 +275,7 @@
                 </div>
                 <div id="reports-results"></div>
             </section>
+            <section id="view-gantt" class="view" aria-label="גאנט למדריכה"></section>
         </main>
     </div>
 
@@ -377,6 +381,7 @@
             document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.toggle('is-active', btn.dataset.view === view));
             window.scrollTo({ top: 0, behavior: 'smooth' });
             if (view === 'reports') renderReports();
+            if (view === 'gantt') globalThis.GuideGantt?.open();
         }
 
         function showToast(message, isError = false) {
@@ -498,7 +503,7 @@
             if(typeof google === 'undefined') return;
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
-                scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly',
+                scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/drive.file',
                 callback: (response) => {
                     const handlers = tokenRequestHandlers;
                     tokenRequestHandlers = null;
@@ -563,6 +568,11 @@
         }
 
         function logout() {
+            if (globalThis.GuideGantt?.isSaving()) {
+                showToast('השמירה בדרייב עדיין מתבצעת. נסה להתנתק בסיום השמירה.', true);
+                return;
+            }
+            globalThis.GuideGantt?.reset();
             accessToken = null;
             spreadsheetId = null;
             localStorage.removeItem('yoman_access_token');
@@ -1477,5 +1487,6 @@
             return str.replace(/[&<>'"]/g, t => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[t]));
         }
     </script>
+    <script src="gantt.js"></script>
 </body>
 </html>

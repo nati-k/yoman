@@ -1,0 +1,60 @@
+#view-gantt { --slot-height: 48px; }
+#view-gantt [hidden], .gantt-dialog [hidden] { display: none !important; }
+#view-gantt svg, .gantt-dialog svg, .nav-ico svg { width: 19px; height: 19px; flex: none; }
+.gantt-toolbar, .gantt-actions, .gantt-weekbar, .gantt-controls, .gantt-dialog-actions { display: flex; align-items: center; gap: 10px; }
+.gantt-toolbar { justify-content: space-between; margin-bottom: 20px; }
+.gantt-toolbar h2 { font-size: 1.25rem; margin-bottom: 5px; }
+.gantt-weekbar { border-block: 1px solid var(--line); padding: 14px 0; }
+.gantt-weekbar .field { width: 200px; }
+.gantt-weekbar .icon-btn { align-self: flex-end; margin-bottom: 3px; }
+.gantt-weekbar > .btn-secondary { align-self: flex-end; }
+.gantt-controls { flex-wrap: wrap; padding: 14px 0; }
+#gantt-status { font-size: .8rem; color: var(--muted); flex: 1; min-width: 120px; overflow-wrap: anywhere; }
+#gantt-status.is-error { color: var(--danger); }
+.gantt-days { display: none; }
+.gantt-board { display: grid; grid-template-columns: 65px repeat(5, minmax(140px, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; background: white; }
+.gantt-day, .gantt-times { min-width: 0; }
+.gantt-times { position: sticky; right: 0; z-index: 4; background: white; }
+.gantt-day { border-inline-start: 1px solid var(--line); }
+.gantt-day-head { height: 60px; padding: 8px 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: #e9f0f5; border-bottom: 1px solid var(--line); font-size: .82rem; }
+.gantt-day-head span { font-size: .65rem; color: var(--muted); }
+.gantt-day-body { height: 1152px; position: relative; }
+.gantt-slot { display: block; height: var(--slot-height); width: 100%; border: 0; border-bottom: 1px solid #e5edeb; background: transparent; cursor: pointer; }
+.gantt-slot:nth-child(even) { background: #fafcfb; }
+.gantt-slot:hover { background: var(--primary-soft); }
+.gantt-slot:focus-visible, .gantt-event-edit:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
+.gantt-time { height: var(--slot-height); padding: 5px 2px; border-bottom: 1px solid #e5edeb; font-size: .71rem; text-align: center; color: var(--muted); direction: ltr; }
+.gantt-event { position: absolute; padding: 2px; min-width: 0; z-index: 2; }
+.gantt-event-edit { width: 100%; height: 100%; border: 1px solid color-mix(in srgb, var(--event-color) 65%, #555); border-radius: 5px; background: var(--event-color); color: #173b3a; text-align: start; display: flex; flex-direction: column; gap: 4px; padding: 6px 5px 6px 21px; overflow: hidden; cursor: pointer; font: inherit; }
+.gantt-event-edit strong { font-size: .75rem; overflow-wrap: anywhere; line-height: 1.25; }
+.gantt-event-edit span { font-size: .66rem; line-height: 1.3; overflow-wrap: anywhere; }
+.gantt-event-edit span:first-of-type { direction: ltr; text-align: right; }
+.gantt-move { position: absolute; left: 3px; top: 3px; width: 21px; height: 32px; display: grid; place-items: center; background: transparent; border: 0; cursor: grab; color: #47605b; touch-action: none; }
+.gantt-move svg { width: 16px !important; }
+.gantt-event.is-dragging { z-index: 10; opacity: .8; pointer-events: none; }
+.gantt-legend-title { margin: 22px 0 10px; font-size: .95rem; }
+.gantt-legend { display: flex; flex-wrap: wrap; gap: 8px 15px; padding-bottom: 16px; }
+.gantt-legend-item { display: flex; align-items: center; gap: 7px; background: transparent; border: 0; text-align: start; font: inherit; font-size: .78rem; min-height: 40px; cursor: pointer; color: var(--text); }
+.gantt-legend-item span { width: 18px; height: 18px; border-radius: 3px; border: 1px solid #b4c0bd; flex: none; }
+.gantt-dialog { margin: auto; width: min(540px, calc(100% - 28px)); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 22px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); background: white; box-shadow: var(--shadow); }
+.gantt-dialog::backdrop { background: rgba(10,40,38,.45); }
+.gantt-dialog .field input, .gantt-dialog .field select { background: white; }
+.gantt-text { margin-top: 14px; }
+.gantt-text textarea { min-height: 90px; padding: 12px; border-radius: 8px; }
+.gantt-dialog-actions { justify-content: flex-end; margin-top: 18px; }
+.gantt-dialog-actions .btn-danger { margin-inline-end: auto; }
+.gantt-color { margin-top: 14px; }
+.gantt-color input[type="color"] { width: 70px; padding: 4px; }
+@media (max-width: 720px) {
+    .gantt-weekbar { gap: 6px; }
+    .gantt-weekbar .field { flex: 1; width: auto; }
+    .gantt-weekbar .btn-secondary { padding-inline: 10px; }
+    .gantt-toolbar h2 { font-size: 1.12rem; }
+    .gantt-event-edit strong { font-size: .83rem; }
+    .gantt-event-edit span { font-size: .76rem; }
+    .gantt-move { width: 28px; height: 40px; }
+    .gantt-event-edit { padding-left: 32px; }
+    .gantt-dialog .field-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .gantt-dialog { padding: 16px; }
+    #gantt-status { flex-basis: 100%; }
+}
