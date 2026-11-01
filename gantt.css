@@ -2,7 +2,8 @@
 #view-gantt [hidden], .gantt-dialog [hidden] { display: none !important; }
 #view-gantt svg, .gantt-dialog svg, .nav-ico svg { width: 19px; height: 19px; flex: none; }
 .gantt-toolbar, .gantt-actions, .gantt-weekbar, .gantt-controls, .gantt-dialog-actions { display: flex; align-items: center; gap: 10px; }
-.gantt-toolbar { justify-content: space-between; margin-bottom: 20px; }
+.gantt-toolbar { justify-content: space-between; flex-wrap: wrap; margin-bottom: 20px; }
+.gantt-actions .btn-secondary { display: inline-flex; align-items: center; gap: 6px; }
 .gantt-toolbar h2 { font-size: 1.25rem; margin-bottom: 5px; }
 .gantt-weekbar { border-block: 1px solid var(--line); padding: 14px 0; }
 .gantt-weekbar .field { width: 200px; }
