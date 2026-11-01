@@ -488,6 +488,15 @@
         redrawIcons();
     }
 
+    function updatePlaceFields(form) {
+        const isGardenActivity = form.elements.activity.value === 'type-0';
+        const isFreeText = form.elements.gardenSelect.value === '__free_text__';
+        document.getElementById('gantt-garden-field').hidden = !isGardenActivity;
+        document.getElementById('gantt-free-garden-field').hidden = !isGardenActivity || !isFreeText;
+        document.getElementById('gantt-free-garden').required = isGardenActivity && isFreeText;
+        document.getElementById('gantt-place-field').hidden = isGardenActivity;
+    }
+
     function editEvent(id, day = state.day, start = 480) {
         if (state.busy || !state.model) return;
         const event = state.model.events.find(item => item.id === id);
@@ -502,6 +511,18 @@
         form.elements.end.value = time(event?.end ?? Math.min(start + 60, 1200));
         form.elements.activity.value = event?.activity || state.model.activities[0].id;
         form.elements.place.value = event?.place || '';
+        form.elements.gardenSelect.innerHTML = appData.kindergartens.map((name, index) => `<option value="garden:${index}">${html(name)}</option>`).join('') + '<option value="__free_text__">טקסט חופשי</option>';
+        form.elements.gardenSelect.value = '';
+        form.elements.customGarden.value = '';
+        if (form.elements.activity.value === 'type-0') {
+            const gardenIndex = appData.kindergartens.indexOf(event?.place || '');
+            if (gardenIndex >= 0) form.elements.gardenSelect.value = `garden:${gardenIndex}`;
+            else if (event?.place || !appData.kindergartens.length) {
+                form.elements.gardenSelect.value = '__free_text__';
+                form.elements.customGarden.value = event?.place || '';
+            } else form.elements.gardenSelect.value = 'garden:0';
+        }
+        updatePlaceFields(form);
         form.elements.text.value = event?.text || '';
         document.getElementById('gantt-gardens').innerHTML = appData.kindergartens.map(name => `<option value="${html(name)}"></option>`).join('');
         document.getElementById('gantt-delete').hidden = !event;
@@ -570,6 +591,25 @@
         const section = document.getElementById('view-gantt');
         section.innerHTML = `<div class="gantt-toolbar"><div><h2>גאנט למדריכה</h2><div id="gantt-range" class="muted-note"></div></div><div class="gantt-actions"><button id="gantt-drive" class="btn-secondary" type="button" title="פתיחה בדרייב" aria-label="פתיחה בדרייב">${icon('external-link')} פתיחה בדרייב</button><button id="gantt-download" class="btn-secondary" type="button" title="הורדת אקסל" aria-label="הורדת אקסל">${icon('download')} הורדה</button></div></div><div class="gantt-weekbar"><button id="gantt-prev" class="icon-btn" title="השבוע הקודם" aria-label="השבוע הקודם">${icon('chevron-right')}</button><label class="field"><span>שבוע שמתחיל ביום ראשון</span><input id="gantt-week" type="date"></label><button id="gantt-next" class="icon-btn" title="השבוע הבא" aria-label="השבוע הבא">${icon('chevron-left')}</button><button id="gantt-today" class="btn-secondary" type="button">השבוע</button></div><div class="gantt-controls"><button id="gantt-add" class="btn" type="button">${icon('plus')} פעילות</button><button id="gantt-copy" class="btn-secondary" type="button">${icon('copy')} העתק משבוע קודם</button><span id="gantt-status" role="status" aria-live="polite">בחר שבוע</span><button id="gantt-retry" class="btn-secondary" type="button" hidden>${icon('cloud-upload')} שמור שוב</button></div><div id="gantt-days" class="gantt-days" aria-label="יום לתצוגה"></div><div id="gantt-board" class="gantt-board"></div><h3 class="gantt-legend-title">מקרא פעילויות</h3><div id="gantt-legend" class="gantt-legend"></div>`;
         document.body.insertAdjacentHTML('beforeend', `<dialog id="gantt-editor" class="gantt-dialog" dir="rtl"><form id="gantt-form"><div class="sheet-head"><h3 id="gantt-editor-title">פעילות חדשה</h3><button class="icon-btn" type="button" data-close="gantt-editor" title="סגירה" aria-label="סגירה">${icon('x')}</button></div><div class="field-row"><label class="field"><span>יום</span><select name="day"></select></label><label class="field"><span>סוג פעילות</span><select name="activity"></select></label></div><div class="field-row"><label class="field"><span>התחלה</span><input name="start" type="time" min="08:00" max="19:30" step="1800" required></label><label class="field"><span>סיום</span><input name="end" type="time" min="08:30" max="20:00" step="1800" required></label></div><label class="field"><span>גן / מקום</span><input name="place" list="gantt-gardens" maxlength="200"><datalist id="gantt-gardens"></datalist></label><label class="field gantt-text"><span>תוכן הפעילות</span><textarea name="text" maxlength="2000"></textarea></label><div class="gantt-dialog-actions"><button id="gantt-delete" class="btn-danger" type="button">מחק</button><button class="btn" type="submit">שמור</button></div></form></dialog><dialog id="gantt-type-editor" class="gantt-dialog" dir="rtl"><form id="gantt-type-form"><div class="sheet-head"><h3>סוג פעילות</h3><button class="icon-btn" type="button" data-close="gantt-type-editor" title="סגירה" aria-label="סגירה">${icon('x')}</button></div><label class="field"><span>שם</span><input name="name" maxlength="150" required></label><label class="field gantt-color"><span>צבע</span><input name="color" type="color" required></label><div class="gantt-dialog-actions"><button class="btn" type="submit">שמור</button></div></form></dialog>`);
+        const eventForm = document.getElementById('gantt-form');
+        const originalPlaceField = eventForm.elements.place.closest('.field');
+        originalPlaceField.id = 'gantt-place-field';
+        const gardenField = document.createElement('label');
+        gardenField.id = 'gantt-garden-field';
+        gardenField.className = 'field';
+        gardenField.innerHTML = '<span>גן</span><select name="gardenSelect"></select>';
+        const freeGardenField = document.createElement('label');
+        freeGardenField.id = 'gantt-free-garden-field';
+        freeGardenField.className = 'field';
+        freeGardenField.innerHTML = '<span>שם הגן</span><input id="gantt-free-garden" name="customGarden" type="text" maxlength="200">';
+        originalPlaceField.before(gardenField, freeGardenField);
+        eventForm.elements.activity.addEventListener('change', () => {
+            if (eventForm.elements.activity.value === 'type-0' && !eventForm.elements.gardenSelect.value) {
+                eventForm.elements.gardenSelect.value = appData.kindergartens.length ? 'garden:0' : '__free_text__';
+            }
+            updatePlaceFields(eventForm);
+        });
+        eventForm.elements.gardenSelect.addEventListener('change', () => updatePlaceFields(eventForm));
         const safe = action => () => Promise.resolve().then(action).catch(reportError);
         document.getElementById('gantt-week').addEventListener('change', event => { if (event.target.value) loadWeek(event.target.value); });
         document.getElementById('gantt-prev').onclick = () => loadWeek(shift(state.model.week, -7));
@@ -599,7 +639,14 @@
             const form = event.currentTarget;
             const start = minutes(form.elements.start.value), end = minutes(form.elements.end.value);
             if (start >= end || start < 480 || end > 1200 || start % 30 || end % 30) { showToast('בחר שעות בחצאי שעה בין 08:00 ל־20:00, עם סיום אחרי ההתחלה.', true); return; }
-            const saved = { id: form.dataset.id || crypto.randomUUID(), day: Number(form.elements.day.value), start, end, activity: form.elements.activity.value, place: form.elements.place.value.trim(), text: form.elements.text.value.trim() };
+            const activity = form.elements.activity.value;
+            let place = form.elements.place.value.trim();
+            if (activity === 'type-0') {
+                const gardenChoice = form.elements.gardenSelect.value;
+                place = gardenChoice === '__free_text__' ? form.elements.customGarden.value.trim() : appData.kindergartens[Number(gardenChoice.slice(7))] || '';
+                if (!place) { showToast('נא לבחור גן או להזין שם גן.', true); return; }
+            }
+            const saved = { id: form.dataset.id || crypto.randomUUID(), day: Number(form.elements.day.value), start, end, activity, place, text: form.elements.text.value.trim() };
             mutate(model => { const index = model.events.findIndex(item => item.id === saved.id); if (index < 0) model.events.push(saved); else model.events[index] = saved; });
             document.getElementById('gantt-editor').close();
         });
