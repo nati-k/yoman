@@ -11,7 +11,7 @@
         ["סופרוויז'ן ללמוד לחיות ביחד/הורים", '#E8DDF2'],
         ['העברת הכשרות לצוותים והורים', '#D9E1F2']
     ].map(([name, color], index) => ({ id: `type-${index}`, name, color }));
-    const state = { owner: null, model: null, file: null, dirty: false, busy: false, timer: null, saving: null, day: new Date().getDay() % 5, authorized: false, conflict: false };
+    const state = { owner: null, model: null, file: null, dirty: false, busy: false, timer: null, saving: null, day: new Date().getDay() % 5, conflict: false };
     const html = value => escapeHtml(String(value ?? ''));
     const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
     const time = minutes => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
@@ -25,6 +25,7 @@
     const blank = week => ({ version: 1, week, activities: structuredClone(DEFAULTS), events: [] });
     const draftKey = week => `yoman_gantt:${state.owner}:${week}`;
     const redrawIcons = () => globalThis.lucide?.createIcons();
+    document.addEventListener('DOMContentLoaded', redrawIcons, { once: true });
 
     function lanes(events) {
         const ends = [];
@@ -49,10 +50,10 @@
         const columns = 1 + layouts.reduce((sum, layout) => sum + layout.count, 0);
         const cell = (text = '', color = '#FFFFFF', bold = false) => ({ userEnteredValue: { stringValue: String(text) }, userEnteredFormat: { backgroundColor: { red: parseInt(color.slice(1, 3), 16) / 255, green: parseInt(color.slice(3, 5), 16) / 255, blue: parseInt(color.slice(5, 7), 16) / 255 }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: 'WRAP', textFormat: { fontFamily: 'Calibri', fontSize: 11, bold }, borders: Object.fromEntries(['top', 'bottom', 'left', 'right'].map(side => [side, { style: 'SOLID', color: { red: .83, green: .83, blue: .83 } }])) } });
         const rows = Array.from({ length: 29 + model.activities.length }, () => ({ values: Array.from({ length: columns }, () => cell()) }));
-        rows[0].values[0] = cell('מערכת שעות שבועית', '#FFFFFF', true);
-        rows[1].values[0] = cell(`מלווה גני ילדים - תכנון שבועי מלא | ${shortDate(model.week)}–${shortDate(shift(model.week, 4))}`);
+        rows[0].values[1] = cell('מערכת שעות שבועית', '#FFFFFF', true);
+        rows[1].values[1] = cell(`מלווה גני ילדים - תכנון שבועי מלא | ${shortDate(model.week)}–${shortDate(shift(model.week, 4))}`);
         rows[3].values[0] = cell('שעות', '#C9D0F8', true);
-        const merges = [{ sheetId: 0, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: columns }, { sheetId: 0, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: columns }];
+        const merges = [{ sheetId: 0, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 1, endColumnIndex: columns }, { sheetId: 0, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 1, endColumnIndex: columns }];
         for (let slot = 0; slot < 24; slot++) rows[slot + 4].values[0] = cell(`${time(480 + slot * 30)}–${time(510 + slot * 30)}`, '#FFFFFF', true);
         let column = 1;
         layouts.forEach((layout, day) => {
@@ -225,14 +226,13 @@
         state.owner = spreadsheetId;
         if (state.model) { render(); return; }
         try {
-            if (!state.authorized) { await requestGoogleToken(''); state.authorized = true; }
             await loadWeek(iso(new Date()));
         } catch (error) { reportError(error); }
     }
 
     function reset() {
         clearTimeout(state.timer);
-        Object.assign(state, { owner: null, model: null, file: null, dirty: false, authorized: false, conflict: false });
+        Object.assign(state, { owner: null, model: null, file: null, dirty: false, conflict: false });
         document.getElementById('gantt-editor')?.close();
         if (document.getElementById('gantt-board')) document.getElementById('gantt-board').innerHTML = '';
     }
