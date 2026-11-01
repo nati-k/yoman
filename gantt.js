@@ -11,7 +11,7 @@
         ["סופרוויז'ן ללמוד לחיות ביחד/הורים", '#E8DDF2'],
         ['העברת הכשרות לצוותים והורים', '#D9E1F2']
     ].map(([name, color], index) => ({ id: `type-${index}`, name, color }));
-    const state = { owner: null, model: null, file: null, dirty: false, busy: false, timer: null, saving: null, day: new Date().getDay() % 5, conflict: false, downloadFile: null };
+    const state = { owner: null, model: null, file: null, dirty: false, busy: false, timer: null, saving: null, day: new Date().getDay() % 5 };
     const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const html = value => escapeHtml(String(value ?? ''));
     const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
@@ -154,7 +154,10 @@
             Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
             return node;
         };
-        const serialize = xml => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${new XMLSerializer().serializeToString(xml)}`;
+        const serialize = xml => {
+            const content = new XMLSerializer().serializeToString(xml).replace(/^<\?xml[^?]*\?>\s*/i, '');
+            return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${content}`;
+        };
         const fills = styles.getElementsByTagName('fills')[0];
         const formats = styles.getElementsByTagName('cellXfs')[0];
         const originalFillCount = fills.children.length;
@@ -270,11 +273,11 @@
         return response.status === 204 ? {} : response.json();
     }
     const jsonOptions = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const driveFile = id => api(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,name,modifiedTime,appProperties,parents`);
+    const driveFile = id => api(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,name,appProperties,parents`);
 
     async function findFile(week) {
         const query = `name='${title(week)}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-        const result = await api(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,modifiedTime,appProperties,parents)&pageSize=100`);
+        const result = await api(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,appProperties,parents)&pageSize=100`);
         const matches = (result.files || []).filter(file => file.appProperties?.yomanOwner === state.owner);
         if (matches.length > 1) throw new Error('נמצאו כמה קבצים לשבוע הזה. יש להסיר את העותק המיותר בדרייב.');
         return matches[0] || null;
@@ -295,7 +298,7 @@
     }
 
     function persist() {
-        try { localStorage.setItem(draftKey(state.model.week), JSON.stringify({ model: state.model, fileId: state.file?.id || null, modifiedTime: state.file?.modifiedTime || null })); }
+        try { localStorage.setItem(draftKey(state.model.week), JSON.stringify({ model: state.model, fileId: state.file?.id || null })); }
         catch { showToast('אין מקום לשמירת טיוטה במכשיר. השאר את הדף פתוח עד לסיום השמירה.', true); }
     }
     function status(message, error = false) {
@@ -305,7 +308,6 @@
     function mutate(change) {
         if (state.busy || !state.model) return;
         change(state.model);
-        state.downloadFile = null;
         state.dirty = true;
         persist();
         render();
@@ -320,27 +322,30 @@
         if (state.saving) { await state.saving; return state.dirty ? flush() : undefined; }
         if (!state.dirty) return;
         if (!accessToken || state.owner !== spreadsheetId) throw new Error('יש להתחבר מחדש כדי לשמור את הלו״ז.');
-        if (state.conflict) throw new Error('הקובץ השתנה מחוץ לפורטל. לחץ על פתרון התנגשות לפני שמירה.');
         const snapshot = structuredClone(state.model);
         state.saving = (async () => {
             status('שומר בדרייב…');
             renderButtons();
             const sheets = sheetsFor(validateModel(snapshot, snapshot.week));
+            let createdFile = false;
             if (!state.file) {
                 const existing = await findFile(snapshot.week);
-                if (existing) { state.file = existing; state.conflict = true; throw new Error('השבוע נוצר בחלון אחר. לחץ על פתרון התנגשות.'); }
-                const parent = await folder();
-                const created = await api('https://sheets.googleapis.com/v4/spreadsheets', jsonOptions('POST', { properties: { title: title(snapshot.week) }, sheets }));
-                state.file = { id: created.spreadsheetId };
-                persist();
-                await api(`https://sheets.googleapis.com/v4/spreadsheets/${state.file.id}:batchUpdate`, jsonOptions('POST', { requests: dimensionRequests(snapshot) }));
-                state.file = await api(`https://www.googleapis.com/drive/v3/files/${state.file.id}?addParents=${parent.id}&fields=id,name,modifiedTime,appProperties,parents`, jsonOptions('PATCH', { appProperties: { yomanOwner: state.owner, yomanWeek: snapshot.week } }));
-            } else {
+                if (existing) state.file = existing;
+                else {
+                    const parent = await folder();
+                    const created = await api('https://sheets.googleapis.com/v4/spreadsheets', jsonOptions('POST', { properties: { title: title(snapshot.week) }, sheets }));
+                    state.file = { id: created.spreadsheetId };
+                    createdFile = true;
+                    persist();
+                    await api(`https://sheets.googleapis.com/v4/spreadsheets/${state.file.id}:batchUpdate`, jsonOptions('POST', { requests: dimensionRequests(snapshot) }));
+                    state.file = await api(`https://www.googleapis.com/drive/v3/files/${state.file.id}?addParents=${parent.id}&fields=id,name,appProperties,parents`, jsonOptions('PATCH', { appProperties: { yomanOwner: state.owner, yomanWeek: snapshot.week } }));
+                }
+            }
+            if (!createdFile) {
                 let remote = await driveFile(state.file.id);
-                if (state.file.modifiedTime && remote.modifiedTime !== state.file.modifiedTime) { state.conflict = true; throw new Error('הקובץ השתנה מחוץ לפורטל. לחץ על פתרון התנגשות.'); }
                 if (!remote.appProperties?.yomanOwner) {
                     const parent = await folder();
-                    remote = await api(`https://www.googleapis.com/drive/v3/files/${remote.id}?addParents=${parent.id}&fields=id,name,modifiedTime,appProperties,parents`, jsonOptions('PATCH', { appProperties: { yomanOwner: state.owner, yomanWeek: snapshot.week } }));
+                    remote = await api(`https://www.googleapis.com/drive/v3/files/${remote.id}?addParents=${parent.id}&fields=id,name,appProperties,parents`, jsonOptions('PATCH', { appProperties: { yomanOwner: state.owner, yomanWeek: snapshot.week } }));
                 }
                 if (remote.appProperties.yomanOwner !== state.owner) throw new Error('קובץ השבוע שייך ליומן אחר.');
                 const requests = [
@@ -351,7 +356,7 @@
                     ...dimensionRequests(snapshot)
                 ];
                 await api(`https://sheets.googleapis.com/v4/spreadsheets/${state.file.id}:batchUpdate`, jsonOptions('POST', { requests }));
-                state.file = await driveFile(state.file.id);
+                state.file = remote;
             }
             state.dirty = JSON.stringify(state.model) !== JSON.stringify(snapshot);
             if (state.dirty) persist();
@@ -382,15 +387,13 @@
             }
             let model = file ? await readModel(file, week) : blank(week);
             let dirty = false;
-            let conflict = false;
             if (draft) {
                 model = validateModel(draft.model, week);
                 dirty = true;
-                conflict = Boolean(file && (draft.fileId !== file.id || (draft.modifiedTime && draft.modifiedTime !== file.modifiedTime)));
             }
-            Object.assign(state, { file, model, dirty, conflict, downloadFile: null });
+            Object.assign(state, { file, model, dirty });
             render();
-            status(conflict ? 'טיוטה מקומית ושינוי בדרייב — נדרש פתרון התנגשות' : dirty ? 'טיוטה מקומית שטרם נשמרה' : file ? 'נשמר בדרייב' : 'שבוע חדש');
+            status(dirty ? 'טיוטה מקומית שטרם נשמרה' : file ? 'נשמר בדרייב' : 'שבוע חדש');
         } catch (error) {
             if (oldWeek) document.getElementById('gantt-week').value = oldWeek;
             reportError(error);
@@ -409,7 +412,7 @@
 
     function reset() {
         clearTimeout(state.timer);
-        Object.assign(state, { owner: null, model: null, file: null, dirty: false, conflict: false, downloadFile: null });
+        Object.assign(state, { owner: null, model: null, file: null, dirty: false });
         document.getElementById('gantt-editor')?.close();
         if (document.getElementById('gantt-board')) document.getElementById('gantt-board').innerHTML = '';
     }
@@ -419,19 +422,9 @@
         document.querySelectorAll('#view-gantt button, #view-gantt input').forEach(button => { button.disabled = blocked; });
         ['gantt-download', 'gantt-drive'].forEach(id => { document.getElementById(id).disabled = blocked || (!state.file && !state.dirty); });
         document.getElementById('gantt-copy').hidden = Boolean(state.file || state.model?.events.length);
-        document.getElementById('gantt-conflict').hidden = !state.conflict;
         const retry = document.getElementById('gantt-retry');
-        retry.hidden = Boolean(state.model && (!state.dirty || state.conflict));
+        retry.hidden = Boolean(state.model && !state.dirty);
         retry.disabled = state.busy || Boolean(state.saving);
-        const downloadButton = document.getElementById('gantt-download');
-        const downloadLabel = state.downloadFile ? 'שמור קובץ' : 'הורדה';
-        if (downloadButton.dataset.label !== downloadLabel) {
-            downloadButton.dataset.label = downloadLabel;
-            downloadButton.innerHTML = `${icon(state.downloadFile ? 'save' : 'download')} ${downloadLabel}`;
-            downloadButton.setAttribute('aria-label', state.downloadFile ? 'שמור קובץ אקסל' : 'הורדת אקסל');
-            downloadButton.title = state.downloadFile ? 'שמירת קובץ אקסל' : 'הורדת אקסל';
-            redrawIcons();
-        }
     }
 
     function render() {
@@ -506,37 +499,15 @@
         finally { state.busy = false; renderButtons(); }
     }
 
-    async function resolveConflict() {
-        const overwrite = await openDialog({ title: 'שינוי מחוץ לפורטל', text: 'שמירת הטיוטה מהפורטל תחליף את התכנון והעיצוב הנוכחיים בשיטס. בחר ״שמור את הטיוטה״ להחלפה, או ״ביטול״ כדי להשאיר את הטיוטה ללא שינוי.', confirmLabel: 'שמור את הטיוטה', danger: true });
-        if (!overwrite) return;
-        try { state.file = await driveFile(state.file.id); state.conflict = false; await flush(); }
-        catch (error) { reportError(error); }
-    }
-
     async function download() {
         if (state.busy || state.saving) return;
         try {
-            if (state.downloadFile) {
-                const file = state.downloadFile;
-                state.busy = true;
-                renderButtons();
-                await navigator.share({ files: [file] });
-                state.downloadFile = null;
-                status('הקובץ נמסר לשמירה');
-                return;
-            }
             state.dirty = true;
             persist();
             await flush();
             state.busy = true;
             renderButtons();
             const file = new File([await templateXlsx(state.model)], `${title(state.model.week)}.xlsx`, { type: XLSX_MIME });
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            if (isIOS && navigator.share && navigator.canShare?.({ files: [file] })) {
-                state.downloadFile = file;
-                status('קובץ האקסל מוכן לשמירה');
-                return;
-            }
             const url = URL.createObjectURL(file);
             const link = document.createElement('a');
             link.href = url; link.download = file.name;
@@ -548,7 +519,7 @@
 
     function setup() {
         const section = document.getElementById('view-gantt');
-        section.innerHTML = `<div class="gantt-toolbar"><div><h2>גאנט למדריכה</h2><div id="gantt-range" class="muted-note"></div></div><div class="gantt-actions"><button id="gantt-drive" class="btn-secondary" type="button" title="פתיחה בדרייב" aria-label="פתיחה בדרייב">${icon('external-link')} פתיחה בדרייב</button><button id="gantt-download" class="btn-secondary" type="button" title="הורדת אקסל" aria-label="הורדת אקסל">${icon('download')} הורדה</button></div></div><div class="gantt-weekbar"><button id="gantt-prev" class="icon-btn" title="השבוע הקודם" aria-label="השבוע הקודם">${icon('chevron-right')}</button><label class="field"><span>שבוע שמתחיל ביום ראשון</span><input id="gantt-week" type="date"></label><button id="gantt-next" class="icon-btn" title="השבוע הבא" aria-label="השבוע הבא">${icon('chevron-left')}</button><button id="gantt-today" class="btn-secondary" type="button">השבוע</button></div><div class="gantt-controls"><button id="gantt-add" class="btn" type="button">${icon('plus')} פעילות</button><button id="gantt-copy" class="btn-secondary" type="button">${icon('copy')} העתק משבוע קודם</button><span id="gantt-status" role="status" aria-live="polite">בחר שבוע</span><button id="gantt-retry" class="btn-secondary" type="button" hidden>${icon('cloud-upload')} שמור שוב</button><button id="gantt-conflict" class="btn-secondary" type="button" hidden>פתרון התנגשות</button></div><div id="gantt-days" class="gantt-days" aria-label="יום לתצוגה"></div><div id="gantt-board" class="gantt-board"></div><h3 class="gantt-legend-title">מקרא פעילויות</h3><div id="gantt-legend" class="gantt-legend"></div>`;
+        section.innerHTML = `<div class="gantt-toolbar"><div><h2>גאנט למדריכה</h2><div id="gantt-range" class="muted-note"></div></div><div class="gantt-actions"><button id="gantt-drive" class="btn-secondary" type="button" title="פתיחה בדרייב" aria-label="פתיחה בדרייב">${icon('external-link')} פתיחה בדרייב</button><button id="gantt-download" class="btn-secondary" type="button" title="הורדת אקסל" aria-label="הורדת אקסל">${icon('download')} הורדה</button></div></div><div class="gantt-weekbar"><button id="gantt-prev" class="icon-btn" title="השבוע הקודם" aria-label="השבוע הקודם">${icon('chevron-right')}</button><label class="field"><span>שבוע שמתחיל ביום ראשון</span><input id="gantt-week" type="date"></label><button id="gantt-next" class="icon-btn" title="השבוע הבא" aria-label="השבוע הבא">${icon('chevron-left')}</button><button id="gantt-today" class="btn-secondary" type="button">השבוע</button></div><div class="gantt-controls"><button id="gantt-add" class="btn" type="button">${icon('plus')} פעילות</button><button id="gantt-copy" class="btn-secondary" type="button">${icon('copy')} העתק משבוע קודם</button><span id="gantt-status" role="status" aria-live="polite">בחר שבוע</span><button id="gantt-retry" class="btn-secondary" type="button" hidden>${icon('cloud-upload')} שמור שוב</button></div><div id="gantt-days" class="gantt-days" aria-label="יום לתצוגה"></div><div id="gantt-board" class="gantt-board"></div><h3 class="gantt-legend-title">מקרא פעילויות</h3><div id="gantt-legend" class="gantt-legend"></div>`;
         document.body.insertAdjacentHTML('beforeend', `<dialog id="gantt-editor" class="gantt-dialog" dir="rtl"><form id="gantt-form"><div class="sheet-head"><h3 id="gantt-editor-title">פעילות חדשה</h3><button class="icon-btn" type="button" data-close="gantt-editor" title="סגירה" aria-label="סגירה">${icon('x')}</button></div><div class="field-row"><label class="field"><span>יום</span><select name="day"></select></label><label class="field"><span>סוג פעילות</span><select name="activity"></select></label></div><div class="field-row"><label class="field"><span>התחלה</span><input name="start" type="time" min="08:00" max="19:30" step="1800" required></label><label class="field"><span>סיום</span><input name="end" type="time" min="08:30" max="20:00" step="1800" required></label></div><label class="field"><span>גן / מקום</span><input name="place" list="gantt-gardens" maxlength="200"><datalist id="gantt-gardens"></datalist></label><label class="field gantt-text"><span>תוכן הפעילות</span><textarea name="text" maxlength="2000"></textarea></label><div class="gantt-dialog-actions"><button id="gantt-delete" class="btn-danger" type="button">מחק</button><button class="btn" type="submit">שמור</button></div></form></dialog><dialog id="gantt-type-editor" class="gantt-dialog" dir="rtl"><form id="gantt-type-form"><div class="sheet-head"><h3>סוג פעילות</h3><button class="icon-btn" type="button" data-close="gantt-type-editor" title="סגירה" aria-label="סגירה">${icon('x')}</button></div><label class="field"><span>שם</span><input name="name" maxlength="150" required></label><label class="field gantt-color"><span>צבע</span><input name="color" type="color" required></label><div class="gantt-dialog-actions"><button class="btn" type="submit">שמור</button></div></form></dialog>`);
         const safe = action => () => Promise.resolve().then(action).catch(reportError);
         document.getElementById('gantt-week').addEventListener('change', event => { if (event.target.value) loadWeek(event.target.value); });
@@ -558,7 +529,6 @@
         document.getElementById('gantt-add').onclick = () => editEvent();
         document.getElementById('gantt-copy').onclick = safe(copyPrevious);
         document.getElementById('gantt-retry').onclick = safe(() => state.model ? flush() : open());
-        document.getElementById('gantt-conflict').onclick = safe(resolveConflict);
         document.getElementById('gantt-download').onclick = safe(download);
         document.getElementById('gantt-drive').onclick = safe(async () => {
             await flush();
