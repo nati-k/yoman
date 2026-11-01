@@ -46,39 +46,219 @@
         return model;
     }
 
+    function legendFor(model) {
+        return model.activities.filter(activity => {
+            const original = DEFAULTS.find(item => item.id === activity.id);
+            return !original || Number(activity.id.slice(5)) < 8 || activity.name !== original.name || activity.color.toUpperCase() !== original.color;
+        });
+    }
+
+    function dimensionsFor(model) {
+        const layouts = DAYS.map((day, index) => lanes(model.events.filter(event => event.day === index)));
+        const heights = [35, 20, 12, 30, ...Array(24).fill(24), 15, 25, 10, ...Array(Math.ceil(legendFor(model).length / 4)).fill(26)];
+        const widths = [16, ...layouts.flatMap(layout => Array(layout.count).fill(25 / layout.count))];
+        return { heights, widths, layouts };
+    }
+
+    function dimensionRequests(model) {
+        const dimensions = dimensionsFor(model);
+        return [
+            ...dimensions.heights.map((height, index) => ({ updateDimensionProperties: { range: { sheetId: 0, dimension: 'ROWS', startIndex: index, endIndex: index + 1 }, properties: { pixelSize: Math.round(height * 96 / 72) }, fields: 'pixelSize' } })),
+            ...dimensions.widths.map((width, index) => ({ updateDimensionProperties: { range: { sheetId: 0, dimension: 'COLUMNS', startIndex: index, endIndex: index + 1 }, properties: { pixelSize: Math.floor(width * 7 + 5) }, fields: 'pixelSize' } }))
+        ];
+    }
+
     function sheetsFor(model) {
         const layouts = DAYS.map((day, index) => lanes(model.events.filter(event => event.day === index)));
         const columns = 1 + layouts.reduce((sum, layout) => sum + layout.count, 0);
-        const cell = (text = '', color = '#FFFFFF', bold = false) => ({ userEnteredValue: { stringValue: String(text) }, userEnteredFormat: { backgroundColor: { red: parseInt(color.slice(1, 3), 16) / 255, green: parseInt(color.slice(3, 5), 16) / 255, blue: parseInt(color.slice(5, 7), 16) / 255 }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: 'WRAP', textFormat: { fontFamily: 'Calibri', fontSize: 11, bold }, borders: Object.fromEntries(['top', 'bottom', 'left', 'right'].map(side => [side, { style: 'SOLID', color: { red: .83, green: .83, blue: .83 } }])) } });
-        const rows = Array.from({ length: 31 + Math.ceil(model.activities.length / 4) }, () => ({ values: Array.from({ length: columns }, () => cell()) }));
-        rows[0].values[1] = cell('מערכת שעות שבועית', '#FFFFFF', true);
-        rows[1].values[1] = cell(`מלווה גני ילדים - תכנון שבועי מלא | ${shortDate(model.week)}–${shortDate(shift(model.week, 4))}`);
-        rows[3].values[0] = cell('שעות', '#C9D0F8', true);
-        const merges = [{ sheetId: 0, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 1, endColumnIndex: columns }, { sheetId: 0, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 1, endColumnIndex: columns }];
-        for (let slot = 0; slot < 24; slot++) rows[slot + 4].values[0] = cell(`${time(480 + slot * 30)}–${time(510 + slot * 30)}`, '#FFFFFF', true);
+        const rgb = color => ({ red: parseInt(color.slice(1, 3), 16) / 255, green: parseInt(color.slice(3, 5), 16) / 255, blue: parseInt(color.slice(5, 7), 16) / 255 });
+        const profiles = {
+            plain: { textFormat: { fontFamily: 'Arial', fontSize: 11, bold: false } },
+            title: { textFormat: { fontFamily: 'Calibri', fontSize: 16, bold: true, foregroundColor: rgb('#203764') } },
+            subtitle: { textFormat: { fontFamily: 'Calibri', fontSize: 11, bold: false, foregroundColor: rgb('#595959') } },
+            heading: { textFormat: { fontFamily: 'Calibri', fontSize: 11, bold: true, foregroundColor: rgb('#203764') } },
+            body: { textFormat: { fontFamily: 'Calibri', fontSize: 10, bold: false, foregroundColor: rgb('#000000') } },
+            activity: { textFormat: { fontFamily: 'Calibri', fontSize: 10, bold: true, foregroundColor: rgb('#000000') } },
+            legendTitle: { textFormat: { fontFamily: 'Calibri', fontSize: 12, bold: true, foregroundColor: rgb('#203764') } }
+        };
+        const cell = (text = '', color = null, profile = 'plain') => {
+            const format = structuredClone(profiles[profile]);
+            if (profile !== 'plain') Object.assign(format, { horizontalAlignment: profile === 'legendTitle' ? 'RIGHT' : 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: profile === 'legendTitle' ? 'OVERFLOW_CELL' : 'WRAP' });
+            if (color) Object.assign(format, { backgroundColor: rgb(color), borders: Object.fromEntries(['top', 'bottom', 'left', 'right'].map(side => [side, { style: 'SOLID', color: rgb('#D3D3D3') }])) });
+            return { userEnteredValue: { stringValue: String(text) }, userEnteredFormat: format };
+        };
+        const legend = legendFor(model);
+        const rows = Array.from({ length: 31 + Math.ceil(legend.length / 4) }, () => ({ values: Array.from({ length: columns }, () => cell()) }));
+        rows[0].values[0] = cell('מערכת שעות שבועית', null, 'title');
+        rows[1].values[0] = cell('מלווה גני ילדים - תכנון שבועי מלא', null, 'subtitle');
+        rows[3].values[0] = cell('שעות', '#C9D0F8', 'heading');
+        const merges = [{ sheetId: 0, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: columns }, { sheetId: 0, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: columns }, { sheetId: 0, startRowIndex: 29, endRowIndex: 30, startColumnIndex: 0, endColumnIndex: columns }];
+        const displayTime = value => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
+        for (let slot = 0; slot < 24; slot++) rows[slot + 4].values[0] = cell(`${displayTime(480 + slot * 30)}-${displayTime(510 + slot * 30)}`, '#FFFFFF', 'heading');
         let column = 1;
         layouts.forEach((layout, day) => {
-            for (let offset = 0; offset < layout.count; offset++) rows[3].values[column + offset] = cell(offset ? '' : `${DAYS[day]}\n${shortDate(shift(model.week, day))}`, '#C9D0F8', true);
+            for (let offset = 0; offset < layout.count; offset++) {
+                rows[3].values[column + offset] = cell(offset ? '' : DAYS[day], '#C9D0F8', 'heading');
+                for (let row = 4; row < 28; row++) rows[row].values[column + offset] = cell('', '#FFFFFF', 'body');
+            }
             if (layout.count > 1) merges.push({ sheetId: 0, startRowIndex: 3, endRowIndex: 4, startColumnIndex: column, endColumnIndex: column + layout.count });
             layout.events.forEach(event => {
                 const activity = model.activities.find(item => item.id === event.activity);
                 const startRow = 4 + (event.start - 480) / 30;
                 const endRow = 4 + (event.end - 480) / 30;
-                for (let row = startRow; row < endRow; row++) rows[row].values[column + event.lane] = cell(row === startRow ? [activity.name, event.place, event.text].filter(Boolean).join('\n') : '', activity.color, true);
+                const label = [event.place, event.text].filter(Boolean).join('\n') || activity.name;
+                for (let row = startRow; row < endRow; row++) rows[row].values[column + event.lane] = cell(row === startRow ? label : '', activity.color, activity.id === 'type-1' ? 'body' : 'activity');
                 if (endRow - startRow > 1) merges.push({ sheetId: 0, startRowIndex: startRow, endRowIndex: endRow, startColumnIndex: column + event.lane, endColumnIndex: column + event.lane + 1 });
             });
             column += layout.count;
         });
-        rows[29].values[0] = cell('מקרא הצבעים', '#FFFFFF', true);
-        model.activities.forEach((activity, index) => {
-            rows[31 + Math.floor(index / 4)].values[1 + index % 4] = cell(activity.name, activity.color, true);
+        rows[29].values[0] = cell('מקרא הצבעים', null, 'legendTitle');
+        legend.forEach((activity, index) => {
+            const day = index % 4;
+            const startColumn = 1 + layouts.slice(0, day).reduce((sum, layout) => sum + layout.count, 0);
+            const endColumn = startColumn + layouts[day].count;
+            const row = 31 + Math.floor(index / 4);
+            for (let offset = startColumn; offset < endColumn; offset++) rows[row].values[offset] = cell(offset === startColumn ? activity.name : '', activity.color, 'activity');
+            if (endColumn - startColumn > 1) merges.push({ sheetId: 0, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: startColumn, endColumnIndex: endColumn });
         });
         const dataRows = ['yoman-gantt-v1', model.week, JSON.stringify(model.activities), ...model.events.map(event => JSON.stringify(event))].map(value => ({ values: [cell(value)] }));
         if (dataRows.some(row => row.values[0].userEnteredValue.stringValue.length > 45000)) throw new Error('הנתונים ארוכים מדי לשמירה.');
         return [
-            { properties: { sheetId: 0, title: 'מערכת שעות שבועית', rightToLeft: true, gridProperties: { rowCount: rows.length, columnCount: columns, frozenRowCount: 4, frozenColumnCount: 1 } }, data: [{ startRow: 0, startColumn: 0, rowData: rows }], merges },
+            { properties: { sheetId: 0, title: 'מערכת שעות שבועית', rightToLeft: true, gridProperties: { rowCount: rows.length, columnCount: columns, frozenRowCount: 0, frozenColumnCount: 0, hideGridlines: true } }, data: [{ startRow: 0, startColumn: 0, rowData: rows }], merges },
             { properties: { sheetId: 1, title: '_portal_data', hidden: true, gridProperties: { rowCount: Math.max(100, dataRows.length), columnCount: 1 } }, data: [{ startRow: 0, startColumn: 0, rowData: dataRows }] }
         ];
+    }
+
+    let templateBytes = null;
+
+    async function templateXlsx(model) {
+        if (!globalThis.JSZip) throw new Error('ספריית האקסל עדיין לא נטענה. נסה שוב בעוד רגע.');
+        if (!templateBytes) {
+            templateBytes = fetch(new URL('גאנט למדריכה ריק_8220.xlsx', document.baseURI)).then(response => {
+                if (!response.ok) throw new Error('לא ניתן לטעון את תבנית האקסל המקורית.');
+                return response.arrayBuffer();
+            }).catch(error => { templateBytes = null; throw error; });
+        }
+        const zip = await JSZip.loadAsync(await templateBytes);
+        const parse = async path => {
+            const xml = new DOMParser().parseFromString(await zip.file(path).async('string'), 'application/xml');
+            if (xml.getElementsByTagName('parsererror').length) throw new Error('תבנית האקסל אינה תקינה.');
+            return xml;
+        };
+        const worksheet = await parse('xl/worksheets/sheet1.xml');
+        const styles = await parse('xl/styles.xml');
+        const strings = await parse('xl/sharedStrings.xml');
+        const namespace = worksheet.documentElement.namespaceURI;
+        const element = (xml, name, attributes = {}) => {
+            const node = xml.createElementNS(namespace, name);
+            Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
+            return node;
+        };
+        const serialize = xml => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${new XMLSerializer().serializeToString(xml)}`;
+        const fills = styles.getElementsByTagName('fills')[0];
+        const formats = styles.getElementsByTagName('cellXfs')[0];
+        const originalFillCount = fills.children.length;
+        const originalFormatCount = formats.children.length;
+        const colors = color => [color.red || 0, color.green || 0, color.blue || 0].map(channel => Math.round(channel * 255).toString(16).padStart(2, '0')).join('').toUpperCase();
+        const styleFor = cell => {
+            const format = cell.userEnteredFormat;
+            const font = format.textFormat;
+            if (!format.backgroundColor) return font.fontSize === 16 ? 23 : font.fontSize === 12 ? 22 : font.fontFamily === 'Calibri' ? 15 : 16;
+            const color = `FF${colors(format.backgroundColor)}`;
+            let fillIndex = [...fills.children].findIndex(fill => fill.getElementsByTagName('fgColor')[0]?.getAttribute('rgb') === color);
+            if (fillIndex < 0) {
+                const fill = fills.children[4].cloneNode(true);
+                fill.getElementsByTagName('fgColor')[0].setAttribute('rgb', color);
+                fill.getElementsByTagName('bgColor')[0].setAttribute('rgb', color);
+                fillIndex = fills.children.length;
+                fills.append(fill);
+            }
+            const fontId = font.fontSize === 11 ? 3 : font.bold ? 5 : 4;
+            let styleIndex = [...formats.children].findIndex(style => Number(style.getAttribute('fontId')) === fontId && Number(style.getAttribute('fillId')) === fillIndex && style.getAttribute('borderId') === '1');
+            if (styleIndex < 0) {
+                const style = formats.children[font.bold ? 13 : 4].cloneNode(true);
+                style.setAttribute('fontId', String(fontId));
+                style.setAttribute('fillId', String(fillIndex));
+                styleIndex = formats.children.length;
+                formats.append(style);
+            }
+            return styleIndex;
+        };
+        const shared = [...strings.documentElement.children].map(item => [...item.getElementsByTagName('t')].map(text => text.textContent).join(''));
+        const stringIndices = new Map(shared.map((text, index) => [text, index]));
+        let stringCount = 0;
+        const stringFor = text => {
+            stringCount++;
+            if (!stringIndices.has(text)) {
+                const item = element(strings, 'si');
+                const value = element(strings, 't');
+                value.textContent = text;
+                if (text.trim() !== text) value.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+                item.append(value);
+                strings.documentElement.append(item);
+                stringIndices.set(text, stringIndices.size);
+            }
+            return stringIndices.get(text);
+        };
+        const columnName = index => {
+            let name = '';
+            for (let number = index + 1; number; number = Math.floor((number - 1) / 26)) name = String.fromCharCode(65 + (number - 1) % 26) + name;
+            return name;
+        };
+        const sheet = sheetsFor(model)[0];
+        const dimensions = dimensionsFor(model);
+        const sheetData = worksheet.getElementsByTagName('sheetData')[0];
+        const originalRows = [...sheetData.children];
+        const output = element(worksheet, 'sheetData');
+        sheet.data[0].rowData.forEach((rowData, rowIndex) => {
+            const row = (originalRows[rowIndex] || originalRows[32]).cloneNode(false);
+            row.setAttribute('r', String(rowIndex + 1));
+            row.setAttribute('ht', String(dimensions.heights[rowIndex]));
+            row.setAttribute('spans', `1:${dimensions.widths.length}`);
+            rowData.values.forEach((cell, column) => {
+                const text = cell.userEnteredValue.stringValue;
+                const borderless = !cell.userEnteredFormat.backgroundColor;
+                if (!text && borderless && ![0, 1, 29].includes(rowIndex)) return;
+                const node = element(worksheet, 'c', { r: `${columnName(column)}${rowIndex + 1}`, s: text || !borderless ? styleFor(cell) : 16 });
+                if (text) {
+                    node.setAttribute('t', 's');
+                    const value = element(worksheet, 'v');
+                    value.textContent = String(stringFor(text));
+                    node.append(value);
+                }
+                row.append(node);
+            });
+            output.append(row);
+        });
+        sheetData.replaceWith(output);
+        worksheet.getElementsByTagName('dimension')[0].setAttribute('ref', `A1:${columnName(dimensions.widths.length - 1)}${dimensions.heights.length}`);
+        if (dimensions.widths.length !== 6) {
+            const columns = element(worksheet, 'cols');
+            dimensions.widths.forEach((width, index) => columns.append(element(worksheet, 'col', { min: index + 1, max: index + 1, width, customWidth: 1 })));
+            worksheet.getElementsByTagName('cols')[0].replaceWith(columns);
+        }
+        const ranges = sheet.merges.map(merge => {
+            const start = `${columnName(merge.startColumnIndex)}${merge.startRowIndex + 1}`;
+            const end = `${columnName(merge.endColumnIndex - 1)}${merge.endRowIndex}`;
+            return start === end ? start : `${start}:${end}`;
+        });
+        dimensions.layouts.forEach((layout, day) => {
+            const firstColumn = 1 + dimensions.layouts.slice(0, day).reduce((sum, item) => sum + item.count, 0);
+            layout.events.filter(event => event.end - event.start === 30).forEach(event => ranges.push(`${columnName(firstColumn + event.lane)}${5 + (event.start - 480) / 30}`));
+        });
+        const merges = element(worksheet, 'mergeCells', { count: ranges.length });
+        ranges.forEach(ref => merges.append(element(worksheet, 'mergeCell', { ref })));
+        worksheet.getElementsByTagName('mergeCells')[0].replaceWith(merges);
+        strings.documentElement.setAttribute('count', String(stringCount));
+        strings.documentElement.setAttribute('uniqueCount', String(stringIndices.size));
+        zip.file('xl/worksheets/sheet1.xml', serialize(worksheet));
+        zip.file('xl/sharedStrings.xml', serialize(strings));
+        if (fills.children.length !== originalFillCount || formats.children.length !== originalFormatCount) {
+            fills.setAttribute('count', String(fills.children.length));
+            formats.setAttribute('count', String(formats.children.length));
+            zip.file('xl/styles.xml', serialize(styles));
+        }
+        return zip.generateAsync({ type: 'blob', mimeType: XLSX_MIME, compression: 'DEFLATE' });
     }
 
     async function api(url, options = {}) {
@@ -153,10 +333,7 @@
                 const created = await api('https://sheets.googleapis.com/v4/spreadsheets', jsonOptions('POST', { properties: { title: title(snapshot.week) }, sheets }));
                 state.file = { id: created.spreadsheetId };
                 persist();
-                await api(`https://sheets.googleapis.com/v4/spreadsheets/${state.file.id}:batchUpdate`, jsonOptions('POST', { requests: [
-                    { updateDimensionProperties: { range: { sheetId: 0, dimension: 'ROWS', startIndex: 4, endIndex: 28 }, properties: { pixelSize: 40 }, fields: 'pixelSize' } },
-                    { updateDimensionProperties: { range: { sheetId: 0, dimension: 'COLUMNS', startIndex: 0, endIndex: sheets[0].properties.gridProperties.columnCount }, properties: { pixelSize: 160 }, fields: 'pixelSize' } }
-                ] }));
+                await api(`https://sheets.googleapis.com/v4/spreadsheets/${state.file.id}:batchUpdate`, jsonOptions('POST', { requests: dimensionRequests(snapshot) }));
                 state.file = await api(`https://www.googleapis.com/drive/v3/files/${state.file.id}?addParents=${parent.id}&fields=id,name,modifiedTime,appProperties,parents`, jsonOptions('PATCH', { appProperties: { yomanOwner: state.owner, yomanWeek: snapshot.week } }));
             } else {
                 let remote = await driveFile(state.file.id);
@@ -171,8 +348,7 @@
                     ...sheets.map(sheet => ({ updateSheetProperties: { properties: sheet.properties, fields: 'gridProperties,rightToLeft,hidden' } })),
                     ...sheets.map(sheet => ({ updateCells: { range: { sheetId: sheet.properties.sheetId }, rows: sheet.data[0].rowData, fields: 'userEnteredValue,userEnteredFormat' } })),
                     ...sheets[0].merges.map(range => ({ mergeCells: { range, mergeType: 'MERGE_ALL' } })),
-                    { updateDimensionProperties: { range: { sheetId: 0, dimension: 'ROWS', startIndex: 4, endIndex: 28 }, properties: { pixelSize: 40 }, fields: 'pixelSize' } },
-                    { updateDimensionProperties: { range: { sheetId: 0, dimension: 'COLUMNS', startIndex: 0, endIndex: sheets[0].properties.gridProperties.columnCount }, properties: { pixelSize: 160 }, fields: 'pixelSize' } }
+                    ...dimensionRequests(snapshot)
                 ];
                 await api(`https://sheets.googleapis.com/v4/spreadsheets/${state.file.id}:batchUpdate`, jsonOptions('POST', { requests }));
                 state.file = await driveFile(state.file.id);
@@ -265,16 +441,20 @@
         document.getElementById('gantt-range').textContent = `${shortDate(model.week)}–${shortDate(shift(model.week, 4))}`;
         document.getElementById('gantt-days').innerHTML = DAYS.map((day, index) => `<button type="button" data-day="${index}" class="${state.day === index ? 'is-active' : ''}" aria-pressed="${state.day === index}">${day}</button>`).join('');
         const hours = Array.from({ length: 24 }, (_, slot) => `<div class="gantt-time">${time(480 + slot * 30)}</div>`).join('');
+        const layouts = DAYS.map((day, index) => lanes(model.events.filter(event => event.day === index)));
         const columns = DAYS.map((day, index) => {
-            const layout = lanes(model.events.filter(event => event.day === index));
+            const layout = layouts[index];
             const slots = Array.from({ length: 24 }, (_, slot) => `<button class="gantt-slot" type="button" data-slot="${slot}" data-day="${index}" aria-label="הוסף פעילות ביום ${day} בשעה ${time(480 + slot * 30)}"></button>`).join('');
             const events = layout.events.map(event => {
                 const activity = model.activities.find(item => item.id === event.activity);
-                return `<div class="gantt-event" style="--event-color:${activity.color};top:${(event.start - 480) / 30 * 48}px;height:${(event.end - event.start) / 30 * 48}px;inset-inline-start:${event.lane / layout.count * 100}%;width:${100 / layout.count}%" data-event="${html(event.id)}"><button class="gantt-event-edit" type="button" data-edit="${html(event.id)}" title="עריכת פעילות"><strong>${html(event.place || activity.name)}</strong><span>${time(event.start)}–${time(event.end)}</span><span>${html(event.place ? activity.name : event.text)}</span></button><button class="gantt-move" type="button" title="הזזת פעילות" aria-label="הזזת פעילות" data-move="${html(event.id)}">${icon('grip-vertical')}</button></div>`;
+                const description = [activity.name, event.place, `${time(event.start)}–${time(event.end)}`, event.text].filter(Boolean).join(' | ');
+                return `<div class="gantt-event${event.end - event.start === 30 ? ' is-compact' : ''}" style="--event-color:${activity.color};top:${(event.start - 480) / 30 * 48}px;height:${(event.end - event.start) / 30 * 48}px;inset-inline-start:${event.lane / layout.count * 100}%;width:${100 / layout.count}%" data-event="${html(event.id)}"><button class="gantt-event-edit" type="button" data-edit="${html(event.id)}" title="${html(description)}" aria-label="${html(description)}"><strong>${html(event.place || activity.name)}</strong><span class="gantt-event-time" dir="ltr">${time(event.start)}–${time(event.end)}</span><span class="gantt-event-detail">${html(event.place ? activity.name : event.text)}</span></button><button class="gantt-move" type="button" title="הזזת פעילות" aria-label="הזזת פעילות" data-move="${html(event.id)}">${icon('grip-vertical')}</button></div>`;
             }).join('');
             return `<div class="gantt-day ${index === state.day ? 'is-selected' : ''}"><div class="gantt-day-head"><strong>${day}</strong><span>${shortDate(shift(model.week, index))}</span></div><div class="gantt-day-body" data-column="${index}">${slots}${events}</div></div>`;
         }).join('');
-        document.getElementById('gantt-board').innerHTML = `<div class="gantt-times"><div class="gantt-day-head">שעות</div>${hours}</div>${columns}`;
+        const board = document.getElementById('gantt-board');
+        const tracks = layouts.map(layout => `minmax(${Math.max(140, layout.count * 115)}px, ${layout.count}fr)`).join(' ');
+        board.innerHTML = `<div class="gantt-times"><div class="gantt-day-head">שעות</div>${hours}</div><div class="gantt-week" style="grid-template-columns:${tracks}" tabindex="0" role="region" aria-label="לוח השבוע">${columns}</div>`;
         document.getElementById('gantt-legend').innerHTML = model.activities.map(activity => `<button type="button" class="gantt-legend-item" data-type="${html(activity.id)}" title="עריכת סוג פעילות"><span style="background:${activity.color}"></span>${html(activity.name)}</button>`).join('') + `<button type="button" class="btn-secondary" id="gantt-new-type">${icon('plus')} סוג פעילות</button>`;
         renderButtons();
         redrawIcons();
@@ -350,9 +530,7 @@
             await flush();
             state.busy = true;
             renderButtons();
-            const response = await googleFetch(`https://www.googleapis.com/drive/v3/files/${state.file.id}/export?mimeType=${encodeURIComponent(XLSX_MIME)}`);
-            if (!response.ok) throw new Error('הורדת האקסל נכשלה. נסה שוב.');
-            const file = new File([await response.blob()], `${title(state.model.week)}.xlsx`, { type: XLSX_MIME });
+            const file = new File([await templateXlsx(state.model)], `${title(state.model.week)}.xlsx`, { type: XLSX_MIME });
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
             if (isIOS && navigator.share && navigator.canShare?.({ files: [file] })) {
                 state.downloadFile = file;
