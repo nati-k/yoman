@@ -11,7 +11,8 @@
         ["סופרוויז'ן ללמוד לחיות ביחד/הורים", '#E8DDF2'],
         ['העברת הכשרות לצוותים והורים', '#D9E1F2']
     ].map(([name, color], index) => ({ id: `type-${index}`, name, color }));
-    const state = { owner: null, model: null, file: null, dirty: false, busy: false, timer: null, saving: null, day: new Date().getDay() % 5, conflict: false };
+    const state = { owner: null, model: null, file: null, dirty: false, busy: false, timer: null, saving: null, day: new Date().getDay() % 5, conflict: false, downloadFile: null };
+    const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const html = value => escapeHtml(String(value ?? ''));
     const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
     const time = minutes => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
@@ -49,7 +50,7 @@
         const layouts = DAYS.map((day, index) => lanes(model.events.filter(event => event.day === index)));
         const columns = 1 + layouts.reduce((sum, layout) => sum + layout.count, 0);
         const cell = (text = '', color = '#FFFFFF', bold = false) => ({ userEnteredValue: { stringValue: String(text) }, userEnteredFormat: { backgroundColor: { red: parseInt(color.slice(1, 3), 16) / 255, green: parseInt(color.slice(3, 5), 16) / 255, blue: parseInt(color.slice(5, 7), 16) / 255 }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: 'WRAP', textFormat: { fontFamily: 'Calibri', fontSize: 11, bold }, borders: Object.fromEntries(['top', 'bottom', 'left', 'right'].map(side => [side, { style: 'SOLID', color: { red: .83, green: .83, blue: .83 } }])) } });
-        const rows = Array.from({ length: 29 + model.activities.length }, () => ({ values: Array.from({ length: columns }, () => cell()) }));
+        const rows = Array.from({ length: 31 + Math.ceil(model.activities.length / 4) }, () => ({ values: Array.from({ length: columns }, () => cell()) }));
         rows[0].values[1] = cell('מערכת שעות שבועית', '#FFFFFF', true);
         rows[1].values[1] = cell(`מלווה גני ילדים - תכנון שבועי מלא | ${shortDate(model.week)}–${shortDate(shift(model.week, 4))}`);
         rows[3].values[0] = cell('שעות', '#C9D0F8', true);
@@ -68,10 +69,9 @@
             });
             column += layout.count;
         });
-        rows[28].values[0] = cell('מקרא הצבעים', '#FFFFFF', true);
+        rows[29].values[0] = cell('מקרא הצבעים', '#FFFFFF', true);
         model.activities.forEach((activity, index) => {
-            rows[29 + index].values[1] = cell(activity.name, activity.color, true);
-            merges.push({ sheetId: 0, startRowIndex: 29 + index, endRowIndex: 30 + index, startColumnIndex: 1, endColumnIndex: columns });
+            rows[31 + Math.floor(index / 4)].values[1 + index % 4] = cell(activity.name, activity.color, true);
         });
         const dataRows = ['yoman-gantt-v1', model.week, JSON.stringify(model.activities), ...model.events.map(event => JSON.stringify(event))].map(value => ({ values: [cell(value)] }));
         if (dataRows.some(row => row.values[0].userEnteredValue.stringValue.length > 45000)) throw new Error('הנתונים ארוכים מדי לשמירה.');
@@ -125,6 +125,7 @@
     function mutate(change) {
         if (state.busy || !state.model) return;
         change(state.model);
+        state.downloadFile = null;
         state.dirty = true;
         persist();
         render();
@@ -211,7 +212,7 @@
                 dirty = true;
                 conflict = Boolean(file && (draft.fileId !== file.id || (draft.modifiedTime && draft.modifiedTime !== file.modifiedTime)));
             }
-            Object.assign(state, { file, model, dirty, conflict });
+            Object.assign(state, { file, model, dirty, conflict, downloadFile: null });
             render();
             status(conflict ? 'טיוטה מקומית ושינוי בדרייב — נדרש פתרון התנגשות' : dirty ? 'טיוטה מקומית שטרם נשמרה' : file ? 'נשמר בדרייב' : 'שבוע חדש');
         } catch (error) {
@@ -232,7 +233,7 @@
 
     function reset() {
         clearTimeout(state.timer);
-        Object.assign(state, { owner: null, model: null, file: null, dirty: false, conflict: false });
+        Object.assign(state, { owner: null, model: null, file: null, dirty: false, conflict: false, downloadFile: null });
         document.getElementById('gantt-editor')?.close();
         if (document.getElementById('gantt-board')) document.getElementById('gantt-board').innerHTML = '';
     }
@@ -246,6 +247,15 @@
         const retry = document.getElementById('gantt-retry');
         retry.hidden = Boolean(state.model && (!state.dirty || state.conflict));
         retry.disabled = state.busy || Boolean(state.saving);
+        const downloadButton = document.getElementById('gantt-download');
+        const downloadLabel = state.downloadFile ? 'שמור קובץ' : 'הורדה';
+        if (downloadButton.dataset.label !== downloadLabel) {
+            downloadButton.dataset.label = downloadLabel;
+            downloadButton.innerHTML = `${icon(state.downloadFile ? 'save' : 'download')} ${downloadLabel}`;
+            downloadButton.setAttribute('aria-label', state.downloadFile ? 'שמור קובץ אקסל' : 'הורדת אקסל');
+            downloadButton.title = state.downloadFile ? 'שמירת קובץ אקסל' : 'הורדת אקסל';
+            redrawIcons();
+        }
     }
 
     function render() {
@@ -324,18 +334,37 @@
     }
 
     async function download() {
+        if (state.busy || state.saving) return;
         try {
+            if (state.downloadFile) {
+                const file = state.downloadFile;
+                state.busy = true;
+                renderButtons();
+                await navigator.share({ files: [file] });
+                state.downloadFile = null;
+                status('הקובץ נמסר לשמירה');
+                return;
+            }
+            state.dirty = true;
+            persist();
             await flush();
             state.busy = true;
             renderButtons();
-            const response = await googleFetch(`https://www.googleapis.com/drive/v3/files/${state.file.id}/export?mimeType=${encodeURIComponent('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}`);
+            const response = await googleFetch(`https://www.googleapis.com/drive/v3/files/${state.file.id}/export?mimeType=${encodeURIComponent(XLSX_MIME)}`);
             if (!response.ok) throw new Error('הורדת האקסל נכשלה. נסה שוב.');
-            const url = URL.createObjectURL(await response.blob());
+            const file = new File([await response.blob()], `${title(state.model.week)}.xlsx`, { type: XLSX_MIME });
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            if (isIOS && navigator.share && navigator.canShare?.({ files: [file] })) {
+                state.downloadFile = file;
+                status('קובץ האקסל מוכן לשמירה');
+                return;
+            }
+            const url = URL.createObjectURL(file);
             const link = document.createElement('a');
-            link.href = url; link.download = `${title(state.model.week)}.xlsx`;
+            link.href = url; link.download = file.name;
             document.body.append(link); link.click(); link.remove();
             setTimeout(() => URL.revokeObjectURL(url), 60000);
-        } catch (error) { reportError(error); }
+        } catch (error) { if (error.name !== 'AbortError') reportError(error); }
         finally { state.busy = false; renderButtons(); }
     }
 
