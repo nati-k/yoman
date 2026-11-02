@@ -6,8 +6,8 @@
     <title>יומן ליווי גנים - Google Sheets Sync</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="stylesheet" href="gantt.css">
-    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" integrity="sha384-uTYyvsSSUZeaPhb5RbKlQa0zY/WpX/QHfvg2mczXyBQOpkWPEDy9lczyp+w7SKXu" crossorigin="anonymous" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous" defer></script>
     <style>
         :root {
             --primary: #0f766e; --primary-dark: #115e59; --primary-soft: #ccfbf1;
@@ -329,6 +329,7 @@
         let editingEntry = null;
         let editingGarden = null;
         let activeMicButtonId = 'mic-btn';
+        let pendingDraftGarden = null;
         let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
         const ACTIVITY_COLORS = {
             'מעטפת מקצועית': '#0f766e',
@@ -340,7 +341,7 @@
             'ממשקים וניהול': '#7c3aed'
         };
 
-        document.getElementById('entry-date').valueAsDate = new Date();
+        document.getElementById('entry-date').value = toIsoDate(new Date());
         initUi();
 
         function initUi() {
@@ -359,7 +360,11 @@
             ['filter-from', 'filter-to'].forEach(id => {
                 document.getElementById(id).addEventListener('change', renderReports);
             });
-            document.getElementById('filter-keywords').addEventListener('input', renderReports);
+            let keywordTimer;
+            document.getElementById('filter-keywords').addEventListener('input', () => {
+                clearTimeout(keywordTimer);
+                keywordTimer = setTimeout(renderReports, 150);
+            });
             document.getElementById('manage-gardens').addEventListener('click', openGardensSheet);
             document.getElementById('close-gardens').addEventListener('click', closeGardensSheet);
             document.getElementById('gardens-sheet').addEventListener('click', event => {
@@ -449,6 +454,7 @@
                 if (!draft) return;
                 document.getElementById('entry-text').value = draft.text || '';
                 if (draft.date) document.getElementById('entry-date').value = draft.date;
+                pendingDraftGarden = draft.garden || null;
                 selectedActivities = Array.isArray(draft.activities) ? draft.activities : [];
                 renderActivityPicker();
             } catch (err) {
@@ -491,6 +497,11 @@
             const previous = select.value;
             select.innerHTML = appData.kindergartens.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
             if (previous && appData.kindergartens.includes(previous)) select.value = previous;
+            // The draft's garden can only be applied once the garden list has loaded.
+            if (appData.kindergartens.length && pendingDraftGarden !== null) {
+                if (appData.kindergartens.includes(pendingDraftGarden)) select.value = pendingDraftGarden;
+                pendingDraftGarden = null;
+            }
         }
 
         window.onload = function () {
@@ -702,19 +713,14 @@
             appData.kindergartens = newKgs;
             appData.entries = newEntries;
             appData.attendance = attendance;
-            newKgs.forEach(gardenName => {
-                (newEntries[gardenName] || []).forEach(entry => {
-                    const matchingAttendance = attendance.find(item => item.date === entry.date && item.garden === gardenName && item.extras === (entry.activity || ''));
-                    if (matchingAttendance) entry.sourceKey = matchingAttendance.sourceKey || '';
-                });
-            });
+            linkEntriesToAttendance(newKgs, newEntries, attendance);
             document.getElementById('auth-screen').style.display = 'none';
             document.getElementById('app-screen').style.display = 'block';
             render();
         }
 
         async function appendRowToSheet(sheetName, rowData) {
-            if (!spreadsheetId || !accessToken) return;
+            if (!spreadsheetId || !accessToken) return null;
             const range = `'${sheetName.replace(/'/g, "''")}'!A1`;
             const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW`, {
                 method: 'POST',
@@ -725,7 +731,34 @@
             if (!res.ok) {
                 throw new Error(data.error ? data.error.message : 'שגיאה בשמירת הנתונים');
             }
+            const appended = /!\$?[A-Z]+\$?(\d+)/.exec(data.updates?.updatedRange || '');
+            return appended ? Number(appended[1]) : null;
         }
+
+        const normalizeCell = value => String(value ?? '').replace(/\r\n/g, '\n').trim();
+
+        // Row numbers kept in memory go stale when another device edits the sheet, so confirm the row before touching it.
+        async function resolveRowNumber(sheetName, lastColumn, rowNumber, isMatch) {
+            const quoted = `'${sheetName.replace(/'/g, "''")}'`;
+            const readValues = async range => {
+                const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`);
+                return (await requireGoogleSuccess(res, 'שגיאה באימות השורה בגיליון')).values || [];
+            };
+            if (rowNumber > 1) {
+                const [row] = await readValues(`${quoted}!A${rowNumber}:${lastColumn}${rowNumber}`);
+                if (row && isMatch(row)) return rowNumber;
+            }
+            const rows = await readValues(`${quoted}!A:${lastColumn}`);
+            const index = rows.findIndex((row, position) => position > 0 && isMatch(row));
+            if (index < 0) throw new Error('השורה לא נמצאה בגיליון. טען מחדש את הדף ונסה שוב.');
+            return index + 1;
+        }
+
+        const entryRowMatcher = entry => row => normalizeCell(row[0]) === normalizeCell(entry.date) && normalizeCell(row[1]) === normalizeCell(entry.text) && normalizeCell(row[2]) === normalizeCell(entry.timestamp);
+
+        const attendanceRowMatcher = entry => row => entry.sourceKey
+            ? normalizeCell(row[6]) === entry.sourceKey
+            : !normalizeCell(row[6]) && normalizeCell(row[0]) === normalizeCell(entry.date) && normalizeCell(row[3]) === normalizeCell(entry.garden) && normalizeCell(row[4]) === normalizeCell(entry.extras);
 
         async function updateRowInSheet(sheetName, rowNumber, rowData) {
             if (!spreadsheetId || !accessToken) return;
@@ -757,7 +790,8 @@
             if (!trimmed) return 'יש להזין שם לגן.';
             if (trimmed.length > 100) return 'שם הגן יכול להכיל עד 100 תווים.';
             if (/[\\/?*\[\]:]/.test(trimmed)) return 'שם הגן אינו יכול להכיל את התווים: \\ / ? * [ ] :';
-            if (trimmed !== currentName && appData.kindergartens.includes(trimmed)) return 'הגן כבר קיים.';
+            if (trimmed === ATTENDANCE_SHEET_NAME) return 'השם הזה שמור למערכת.';
+            if (appData.kindergartens.some(name => name !== currentName && name.toLowerCase() === trimmed.toLowerCase())) return 'הגן כבר קיים.';
             return null;
         }
 
@@ -1071,6 +1105,7 @@
         }
 
         async function updateAttendanceRow(entry, rowData) {
+            entry.rowNumber = await resolveRowNumber(ATTENDANCE_SHEET_NAME, 'G', entry.rowNumber, attendanceRowMatcher(entry));
             const endColumn = String.fromCharCode(64 + rowData.length);
             const range = `'${ATTENDANCE_SHEET_NAME}'!A${entry.rowNumber}:${endColumn}${entry.rowNumber}`;
             const res = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
@@ -1084,11 +1119,26 @@
             return `entry-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
         }
 
+        // Each report claims at most one attendance row, so identical reports never share a row.
+        function linkEntriesToAttendance(gardens, entriesByGarden, attendance) {
+            const claimed = new Set();
+            gardens.forEach(gardenName => {
+                (entriesByGarden[gardenName] || []).forEach(entry => {
+                    const match = attendance.find(item => !claimed.has(item) && item.date === entry.date && item.garden === gardenName && item.extras === (entry.activity || ''));
+                    if (!match) return;
+                    claimed.add(match);
+                    entry.sourceKey = match.sourceKey;
+                });
+            });
+        }
+
         async function syncGardenEntryToAttendance(entry, gardenName, activity, reported, mode) {
             await ensureAttendanceSheet();
             const sourceKey = entry.sourceKey || createAttendanceSourceKey();
-            const rowData = [entry.date, '', '', gardenName, activity || '', reported ? 'כן' : 'לא', sourceKey];
-            const existing = appData.attendance.find(item => item.sourceKey === sourceKey) || appData.attendance.find(item => item.date === entry.date && item.garden === gardenName && item.extras === (activity || ''));
+            const existing = entry.sourceKey
+                ? appData.attendance.find(item => item.sourceKey === entry.sourceKey)
+                : appData.attendance.find(item => !item.sourceKey && item.date === entry.date && item.garden === gardenName && item.extras === (activity || ''));
+            const rowData = [entry.date, existing?.entryTime || '', existing?.exitTime || '', gardenName, activity || '', reported ? 'כן' : 'לא', sourceKey];
 
             if (mode === 'delete') {
                 if (existing) await deleteAttendanceEntry(existing, false, false);
@@ -1099,8 +1149,8 @@
                 await updateAttendanceRow(existing, rowData);
                 Object.assign(existing, { date: entry.date, garden: gardenName, extras: activity || '', reported, sourceKey });
             } else {
-                await appendRowToSheet(ATTENDANCE_SHEET_NAME, rowData);
-                const rowNumber = appData.attendance.reduce((max, item) => Math.max(max, item.rowNumber || 1), 1) + 1;
+                const appendedRow = await appendRowToSheet(ATTENDANCE_SHEET_NAME, rowData);
+                const rowNumber = appendedRow ?? appData.attendance.reduce((max, item) => Math.max(max, item.rowNumber || 1), 1) + 1;
                 appData.attendance.push({ date: entry.date, entryTime: '', exitTime: '', garden: gardenName, extras: activity || '', reported, sourceKey, rowNumber });
             }
             return sourceKey;
@@ -1113,6 +1163,7 @@
             }
             if (manageBusyState) setWriteInProgress(true);
             try {
+                entry.rowNumber = await resolveRowNumber(ATTENDANCE_SHEET_NAME, 'G', entry.rowNumber, attendanceRowMatcher(entry));
                 const metaRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
                 const meta = await requireGoogleSuccess(metaRes, 'שגיאה באיתור גיליון דוח הנוכחות');
                 const sheet = meta.sheets.find(item => item.properties.title === ATTENDANCE_SHEET_NAME);
@@ -1134,12 +1185,31 @@
         }
 
         function applyGardenDetection(text) {
-            const lower = text.toLowerCase();
-            const match = appData.kindergartens.find(name => lower.includes(name.toLowerCase()));
+            const match = findGardenInText(text, appData.kindergartens);
             if (match) document.getElementById('entry-garden').value = match;
         }
 
+        // Longest name wins and a trailing digit blocks a match, so "גן 10" never resolves to "גן 1".
+        function findGardenInText(text, gardens) {
+            const lower = text.toLowerCase();
+            let best = null;
+            gardens.forEach(name => {
+                const needle = name.toLowerCase();
+                if (!needle) return;
+                for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, at + 1)) {
+                    const before = lower[at - 1], after = lower[at + needle.length];
+                    const digitBefore = /\d/.test(needle[0]) && /\d/.test(before || '');
+                    const digitAfter = /\d/.test(needle[needle.length - 1]) && /\d/.test(after || '');
+                    if (digitBefore || digitAfter) continue;
+                    if (!best || name.length > best.length) best = name;
+                    break;
+                }
+            });
+            return best;
+        }
+
         async function removeEntryRow(sheetName, entry) {
+            entry.rowNumber = await resolveRowNumber(sheetName, 'E', entry.rowNumber, entryRowMatcher(entry));
             const metaRes = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
             const meta = await requireGoogleSuccess(metaRes, 'שגיאה באיתור הגיליון');
             const sheet = meta.sheets.find(item => item.properties.title === sheetName);
@@ -1153,6 +1223,25 @@
             appData.entries[sheetName] = (appData.entries[sheetName] || [])
                 .filter(item => item !== entry)
                 .map(item => item.rowNumber > entry.rowNumber ? { ...item, rowNumber: item.rowNumber - 1 } : item);
+        }
+
+        // Append before delete: a failure midway leaves a duplicate instead of losing the report.
+        async function moveEntryToGarden(entry, fromGarden, toGarden, { date, text, timestamp, activity }) {
+            const reported = entry.reported;
+            const appendedRow = await appendRowToSheet(toGarden, [date, text, timestamp, reported ? 'כן' : 'לא', activity]);
+            if (!appData.entries[toGarden]) appData.entries[toGarden] = [];
+            const target = appData.entries[toGarden];
+            const rowNumber = appendedRow ?? target.reduce((max, item) => Math.max(max, item.rowNumber || 1), 1) + 1;
+            const moved = { date, text, timestamp, reported, activity, sourceKey: entry.sourceKey, rowNumber };
+            target.push(moved);
+            try {
+                await removeEntryRow(fromGarden, entry);
+                moved.sourceKey = await syncGardenEntryToAttendance(moved, toGarden, activity, reported, 'update');
+            } catch (err) {
+                err.movedEntry = moved;
+                throw err;
+            }
+            return moved;
         }
 
         async function saveEntry() {
@@ -1174,16 +1263,15 @@
             setSyncState('busy', 'שומר...');
             try {
                 if (editingEntry && editingGarden && editingGarden !== gardenName) {
-                    const reported = editingEntry.reported;
-                    const sourceKey = editingEntry.sourceKey;
-                    await removeEntryRow(editingGarden, editingEntry);
-                    await appendRowToSheet(gardenName, [date, text, timeStr, reported ? 'כן' : 'לא', activity]);
-                    const target = appData.entries[gardenName];
-                    const rowNumber = target.reduce((max, item) => Math.max(max, item.rowNumber || 1), 1) + 1;
-                    const moved = { date, text, timestamp: timeStr, reported, activity, sourceKey, rowNumber };
-                    moved.sourceKey = await syncGardenEntryToAttendance(moved, gardenName, activity, reported, 'update');
-                    target.push(moved);
+                    try {
+                        await moveEntryToGarden(editingEntry, editingGarden, gardenName, { date, text, timestamp: timeStr, activity });
+                    } catch (err) {
+                        // The new row already exists, so a retry must edit it instead of adding another copy.
+                        if (err.movedEntry) { editingEntry = err.movedEntry; editingGarden = gardenName; }
+                        throw err;
+                    }
                 } else if (editingEntry) {
+                    editingEntry.rowNumber = await resolveRowNumber(gardenName, 'E', editingEntry.rowNumber, entryRowMatcher(editingEntry));
                     await updateRowInSheet(gardenName, editingEntry.rowNumber, [date, text, timeStr, editingEntry.reported ? 'כן' : 'לא', activity]);
                     editingEntry.date = date;
                     editingEntry.text = text;
@@ -1191,9 +1279,9 @@
                     editingEntry.activity = activity;
                     editingEntry.sourceKey = await syncGardenEntryToAttendance(editingEntry, gardenName, activity, editingEntry.reported, 'update');
                 } else {
-                    await appendRowToSheet(gardenName, [date, text, timeStr, 'לא', activity]);
+                    const appendedRow = await appendRowToSheet(gardenName, [date, text, timeStr, 'לא', activity]);
                     const target = appData.entries[gardenName];
-                    const rowNumber = target.reduce((max, item) => Math.max(max, item.rowNumber || 1), 1) + 1;
+                    const rowNumber = appendedRow ?? target.reduce((max, item) => Math.max(max, item.rowNumber || 1), 1) + 1;
                     const savedEntry = { date, text, timestamp: timeStr, reported: false, activity, sourceKey: '', rowNumber };
                     savedEntry.sourceKey = await syncGardenEntryToAttendance(savedEntry, gardenName, activity, false, 'create');
                     target.push(savedEntry);
@@ -1222,6 +1310,7 @@
             setWriteInProgress(true);
             setSyncState('busy', 'מעדכן...');
             try {
+                entry.rowNumber = await resolveRowNumber(sheetName, 'E', entry.rowNumber, entryRowMatcher(entry));
                 await updateRowInSheet(sheetName, entry.rowNumber, [entry.date, entry.text, entry.timestamp, reported ? 'כן' : 'לא', entry.activity || '']);
                 entry.sourceKey = await syncGardenEntryToAttendance(entry, sheetName, entry.activity || '', reported, 'update');
                 entry.reported = reported;
@@ -1266,7 +1355,7 @@
             editingEntry = null;
             editingGarden = null;
             document.getElementById('entry-text').value = '';
-            document.getElementById('entry-date').valueAsDate = new Date();
+            document.getElementById('entry-date').value = toIsoDate(new Date());
             selectedActivities = [];
             renderActivityPicker();
             localStorage.removeItem(DRAFT_KEY);

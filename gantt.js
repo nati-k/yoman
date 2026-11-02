@@ -11,7 +11,7 @@
         ["סופרוויז'ן ללמוד לחיות ביחד/הורים", '#E8DDF2'],
         ['העברת הכשרות לצוותים והורים', '#D9E1F2']
     ].map(([name, color], index) => ({ id: `type-${index}`, name, color }));
-    const state = { owner: null, model: null, file: null, dirty: false, busy: false, timer: null, saving: null, day: new Date().getDay() % 5, exportFile: null, exportPromise: null, exportVersion: 0, exportError: false };
+    const state = { owner: null, accountId: null, model: null, file: null, dirty: false, busy: false, timer: null, saving: null, day: new Date().getDay() % 5, exportFile: null, exportPromise: null, exportVersion: 0, exportError: false };
     const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const html = value => escapeHtml(String(value ?? ''));
     const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
@@ -63,9 +63,19 @@
 
     function dimensionRequests(model) {
         const dimensions = dimensionsFor(model);
+        // Adjacent rows or columns with the same size share one request.
+        const grouped = (dimension, sizes) => {
+            const requests = [];
+            sizes.forEach((size, index) => {
+                const last = requests.at(-1)?.updateDimensionProperties;
+                if (last && last.properties.pixelSize === size) last.range.endIndex = index + 1;
+                else requests.push({ updateDimensionProperties: { range: { sheetId: 0, dimension, startIndex: index, endIndex: index + 1 }, properties: { pixelSize: size }, fields: 'pixelSize' } });
+            });
+            return requests;
+        };
         return [
-            ...dimensions.heights.map((height, index) => ({ updateDimensionProperties: { range: { sheetId: 0, dimension: 'ROWS', startIndex: index, endIndex: index + 1 }, properties: { pixelSize: Math.round(height * 96 / 72) }, fields: 'pixelSize' } })),
-            ...dimensions.widths.map((width, index) => ({ updateDimensionProperties: { range: { sheetId: 0, dimension: 'COLUMNS', startIndex: index, endIndex: index + 1 }, properties: { pixelSize: Math.floor(width * 7 + 5) }, fields: 'pixelSize' } }))
+            ...grouped('ROWS', dimensions.heights.map(height => Math.round(height * 96 / 72))),
+            ...grouped('COLUMNS', dimensions.widths.map(width => Math.floor(width * 7 + 5)))
         ];
     }
 
@@ -276,12 +286,22 @@
     const jsonOptions = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const driveFile = id => api(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,name,appProperties,parents`);
 
+    // New files are owned by the Google account so they survive recreating the journal; files owned by the journal id stay valid.
+    const ownerValue = () => state.accountId || state.owner;
+    const isOwnedByUser = file => Boolean(file.appProperties?.yomanOwner) && [state.owner, state.accountId].includes(file.appProperties.yomanOwner);
+
+    async function loadAccountId() {
+        try {
+            const about = await api('https://www.googleapis.com/drive/v3/about?fields=user(permissionId)');
+            return about.user?.permissionId ? `acct:${about.user.permissionId}` : null;
+        } catch { return null; }
+    }
+
+    // Duplicates (e.g. two devices creating the same week) resolve to the most recently modified copy.
     async function findFile(week) {
         const query = `name='${title(week)}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-        const result = await api(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,appProperties,parents)&pageSize=100`);
-        const matches = (result.files || []).filter(file => file.appProperties?.yomanOwner === state.owner);
-        if (matches.length > 1) throw new Error('נמצאו כמה קבצים לשבוע הזה. יש להסיר את העותק המיותר בדרייב.');
-        return matches[0] || null;
+        const result = await api(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,modifiedTime,appProperties,parents)&orderBy=modifiedTime%20desc&pageSize=100`);
+        return (result.files || []).find(isOwnedByUser) || null;
     }
 
     async function readModel(file, week) {
@@ -294,8 +314,8 @@
     async function folder() {
         const query = "name='גאנט למדריכה' and mimeType='application/vnd.google-apps.folder' and trashed=false";
         const result = await api(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,appProperties)&pageSize=100`);
-        const existing = result.files.find(file => file.appProperties?.yomanOwner === state.owner);
-        return existing || api('https://www.googleapis.com/drive/v3/files?fields=id', jsonOptions('POST', { name: 'גאנט למדריכה', mimeType: 'application/vnd.google-apps.folder', appProperties: { yomanOwner: state.owner } }));
+        const existing = result.files.find(isOwnedByUser);
+        return existing || api('https://www.googleapis.com/drive/v3/files?fields=id', jsonOptions('POST', { name: 'גאנט למדריכה', mimeType: 'application/vnd.google-apps.folder', appProperties: { yomanOwner: ownerValue() } }));
     }
 
     function persist() {
@@ -364,16 +384,19 @@
                     createdFile = true;
                     persist();
                     await api(`https://sheets.googleapis.com/v4/spreadsheets/${state.file.id}:batchUpdate`, jsonOptions('POST', { requests: dimensionRequests(snapshot) }));
-                    state.file = await api(`https://www.googleapis.com/drive/v3/files/${state.file.id}?addParents=${parent.id}&fields=id,name,appProperties,parents`, jsonOptions('PATCH', { appProperties: { yomanOwner: state.owner, yomanWeek: snapshot.week } }));
+                    state.file = await api(`https://www.googleapis.com/drive/v3/files/${state.file.id}?addParents=${parent.id}&fields=id,name,appProperties,parents`, jsonOptions('PATCH', { appProperties: { yomanOwner: ownerValue(), yomanWeek: snapshot.week } }));
                 }
             }
             if (!createdFile) {
                 let remote = await driveFile(state.file.id);
                 if (!remote.appProperties?.yomanOwner) {
                     const parent = await folder();
-                    remote = await api(`https://www.googleapis.com/drive/v3/files/${remote.id}?addParents=${parent.id}&fields=id,name,appProperties,parents`, jsonOptions('PATCH', { appProperties: { yomanOwner: state.owner, yomanWeek: snapshot.week } }));
+                    remote = await api(`https://www.googleapis.com/drive/v3/files/${remote.id}?addParents=${parent.id}&fields=id,name,appProperties,parents`, jsonOptions('PATCH', { appProperties: { yomanOwner: ownerValue(), yomanWeek: snapshot.week } }));
                 }
-                if (remote.appProperties.yomanOwner !== state.owner) throw new Error('קובץ השבוע שייך ליומן אחר.');
+                if (!isOwnedByUser(remote)) throw new Error('קובץ השבוע שייך ליומן אחר.');
+                if (state.accountId && remote.appProperties.yomanOwner !== state.accountId) {
+                    remote = await api(`https://www.googleapis.com/drive/v3/files/${remote.id}?fields=id,name,appProperties,parents`, jsonOptions('PATCH', { appProperties: { yomanOwner: state.accountId } }));
+                }
                 const requests = [
                     { unmergeCells: { range: { sheetId: 0 } } },
                     ...sheets.map(sheet => ({ updateSheetProperties: { properties: sheet.properties, fields: 'gridProperties,rightToLeft,hidden' } })),
@@ -409,7 +432,7 @@
             let file = await findFile(week);
             if (!file && draft?.fileId) {
                 const recovered = await driveFile(draft.fileId);
-                if (recovered.name !== title(week) || (recovered.appProperties?.yomanOwner && recovered.appProperties.yomanOwner !== state.owner)) throw new Error('לא ניתן לשייך את קובץ הטיוטה לשבוע הזה.');
+                if (recovered.name !== title(week) || (recovered.appProperties?.yomanOwner && !isOwnedByUser(recovered))) throw new Error('לא ניתן לשייך את קובץ הטיוטה לשבוע הזה.');
                 file = recovered;
             }
             let model = file ? await readModel(file, week) : blank(week);
@@ -438,6 +461,7 @@
         state.owner = spreadsheetId;
         if (state.model) { render(); return; }
         try {
+            if (!state.accountId) state.accountId = await loadAccountId();
             await loadWeek(iso(new Date()));
         } catch (error) { reportError(error); }
     }
@@ -445,7 +469,7 @@
     function reset() {
         clearTimeout(state.timer);
         state.exportVersion++;
-        Object.assign(state, { owner: null, model: null, file: null, dirty: false, exportFile: null, exportPromise: null, exportError: false });
+        Object.assign(state, { owner: null, accountId: null, model: null, file: null, dirty: false, exportFile: null, exportPromise: null, exportError: false });
         document.getElementById('gantt-editor')?.close();
         if (document.getElementById('gantt-board')) document.getElementById('gantt-board').innerHTML = '';
     }
