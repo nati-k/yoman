@@ -1,4 +1,4 @@
-#view-gantt { --slot-height: 48px; }
+#view-gantt { --slot-height: 24px; }
 #view-gantt [hidden], .gantt-dialog [hidden] { display: none !important; }
 #view-gantt svg, .gantt-dialog svg, .nav-ico svg { width: 19px; height: 19px; flex: none; }
 .gantt-toolbar, .gantt-actions, .gantt-weekbar, .gantt-controls, .gantt-dialog-actions { display: flex; align-items: center; gap: 10px; }
@@ -23,7 +23,8 @@
 .gantt-day-head span { font-size: .65rem; color: var(--muted); }
 .gantt-day-body { height: 1152px; position: relative; }
 .gantt-slot { display: block; height: var(--slot-height); width: 100%; border: 0; border-bottom: 1px solid #e5edeb; background: transparent; cursor: pointer; }
-.gantt-slot:nth-child(even) { background: #fafcfb; }
+.gantt-slot.is-half-hour { background: #fafcfb; border-bottom-color: #cbd9d5; }
+.gantt-time.is-half-hour { border-bottom-color: #cbd9d5; }
 .gantt-slot:hover { background: var(--primary-soft); }
 .gantt-slot:focus-visible, .gantt-event-edit:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
 .gantt-time { height: var(--slot-height); padding: 5px 2px; border-bottom: 1px solid #e5edeb; font-size: .71rem; text-align: center; color: var(--muted); direction: ltr; }
@@ -34,7 +35,10 @@
 .gantt-event-time { white-space: nowrap; text-align: right; flex-shrink: 0; }
 .gantt-event-detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; flex-shrink: 0; }
 .gantt-event.is-compact .gantt-event-detail { display: none; }
+.gantt-event.is-compact .gantt-event-edit { padding-block: 0; gap: 0; }
+.gantt-event.is-compact .gantt-event-edit strong, .gantt-event.is-compact .gantt-event-time { font-size: .58rem; line-height: 1; }
 .gantt-resize { position: absolute; inset-inline: 0; z-index: 4; height: 12px; padding: 0; border: 0; background: transparent; cursor: ns-resize; touch-action: none; }
+.gantt-event.is-compact .gantt-resize { height: 8px; }
 .gantt-resize::after { content: ""; position: absolute; left: 50%; width: 24px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--event-color) 45%, #173b3a); transform: translateX(-50%); opacity: .8; }
 .gantt-resize-start { top: 0; }
 .gantt-resize-start::after { top: 3px; }

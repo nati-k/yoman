@@ -1,6 +1,11 @@
 (() => {
     'use strict';
     const DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי'];
+    const SLOT_MINUTES = 15;
+    const SLOT_PIXELS = 24;
+    const DAY_START = 480;
+    const DAY_END = 1200;
+    const SLOTS_PER_DAY = (DAY_END - DAY_START) / SLOT_MINUTES;
     const DEFAULTS = [
         ['עבודה בגנים', '#FADBD8'], ['מעבר בין גנים', '#FFF2CC'],
         ["סופרוויז'ן קבוצתי / ישיבת צוות", '#E2EFDA'],
@@ -43,7 +48,7 @@
     function validateModel(model, week) {
         if (model.version !== 1 || model.week !== week || !Array.isArray(model.activities) || !Array.isArray(model.events)) throw new Error('קובץ השבוע אינו בפורמט של הפורטל.');
         if (model.activities.some(activity => !activity.id || typeof activity.name !== 'string' || !/^#[0-9a-f]{6}$/i.test(activity.color))) throw new Error('מקראת הפעילויות אינה תקינה.');
-        if (model.events.some(event => !event.id || !Number.isInteger(event.day) || event.day < 0 || event.day > 4 || !Number.isInteger(event.start) || !Number.isInteger(event.end) || event.start < 480 || event.end > 1200 || event.start >= event.end || event.start % 30 || event.end % 30 || !model.activities.some(activity => activity.id === event.activity))) throw new Error('נתוני הלו״ז אינם תקינים.');
+        if (model.events.some(event => !event.id || !Number.isInteger(event.day) || event.day < 0 || event.day > 4 || !Number.isInteger(event.start) || !Number.isInteger(event.end) || event.start < DAY_START || event.end > DAY_END || event.start >= event.end || event.start % SLOT_MINUTES || event.end % SLOT_MINUTES || !model.activities.some(activity => activity.id === event.activity))) throw new Error('נתוני הלו״ז אינם תקינים.');
         return model;
     }
 
@@ -56,7 +61,7 @@
 
     function dimensionsFor(model) {
         const layouts = DAYS.map((day, index) => lanes(model.events.filter(event => event.day === index)));
-        const heights = [35, 20, 12, 30, ...Array(24).fill(24), 15, 25, 10, ...Array(Math.ceil(legendFor(model).length / 4)).fill(26)];
+        const heights = [35, 20, 12, 30, ...Array(SLOTS_PER_DAY).fill(12), 15, 25, 10, ...Array(Math.ceil(legendFor(model).length / 4)).fill(26)];
         const widths = [16, ...layouts.flatMap(layout => Array(layout.count).fill(25 / layout.count))];
         return { heights, widths, layouts };
     }
@@ -99,36 +104,38 @@
             return { userEnteredValue: { stringValue: String(text) }, userEnteredFormat: format };
         };
         const legend = legendFor(model);
-        const rows = Array.from({ length: 31 + Math.ceil(legend.length / 4) }, () => ({ values: Array.from({ length: columns }, () => cell()) }));
+        const legendTitleRow = 5 + SLOTS_PER_DAY;
+        const legendStartRow = legendTitleRow + 2;
+        const rows = Array.from({ length: legendStartRow + Math.ceil(legend.length / 4) }, () => ({ values: Array.from({ length: columns }, () => cell()) }));
         rows[0].values[0] = cell('מערכת שעות שבועית', null, 'title');
         rows[1].values[0] = cell('מלווה גני ילדים - תכנון שבועי מלא', null, 'subtitle');
         rows[3].values[0] = cell('שעות', '#C9D0F8', 'heading');
-        const merges = [{ sheetId: 0, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: columns }, { sheetId: 0, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: columns }, { sheetId: 0, startRowIndex: 29, endRowIndex: 30, startColumnIndex: 0, endColumnIndex: columns }];
+        const merges = [{ sheetId: 0, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: columns }, { sheetId: 0, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: columns }, { sheetId: 0, startRowIndex: legendTitleRow, endRowIndex: legendTitleRow + 1, startColumnIndex: 0, endColumnIndex: columns }];
         const displayTime = value => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
-        for (let slot = 0; slot < 24; slot++) rows[slot + 4].values[0] = cell(`${displayTime(480 + slot * 30)}-${displayTime(510 + slot * 30)}`, '#FFFFFF', 'heading');
+        for (let slot = 0; slot < SLOTS_PER_DAY; slot++) rows[slot + 4].values[0] = cell(`${displayTime(DAY_START + slot * SLOT_MINUTES)}-${displayTime(DAY_START + (slot + 1) * SLOT_MINUTES)}`, '#FFFFFF', 'heading');
         let column = 1;
         layouts.forEach((layout, day) => {
             for (let offset = 0; offset < layout.count; offset++) {
                 rows[3].values[column + offset] = cell(offset ? '' : DAYS[day], '#C9D0F8', 'heading');
-                for (let row = 4; row < 28; row++) rows[row].values[column + offset] = cell('', '#FFFFFF', 'body');
+                for (let row = 4; row < 4 + SLOTS_PER_DAY; row++) rows[row].values[column + offset] = cell('', '#FFFFFF', 'body');
             }
             if (layout.count > 1) merges.push({ sheetId: 0, startRowIndex: 3, endRowIndex: 4, startColumnIndex: column, endColumnIndex: column + layout.count });
             layout.events.forEach(event => {
                 const activity = model.activities.find(item => item.id === event.activity);
-                const startRow = 4 + (event.start - 480) / 30;
-                const endRow = 4 + (event.end - 480) / 30;
+                const startRow = 4 + (event.start - DAY_START) / SLOT_MINUTES;
+                const endRow = 4 + (event.end - DAY_START) / SLOT_MINUTES;
                 const label = [event.place, event.text].filter(Boolean).join('\n') || activity.name;
                 for (let row = startRow; row < endRow; row++) rows[row].values[column + event.lane] = cell(row === startRow ? label : '', activity.color, activity.id === 'type-1' ? 'body' : 'activity');
                 if (endRow - startRow > 1) merges.push({ sheetId: 0, startRowIndex: startRow, endRowIndex: endRow, startColumnIndex: column + event.lane, endColumnIndex: column + event.lane + 1 });
             });
             column += layout.count;
         });
-        rows[29].values[0] = cell('מקרא הצבעים', null, 'legendTitle');
+        rows[legendTitleRow].values[0] = cell('מקרא הצבעים', null, 'legendTitle');
         legend.forEach((activity, index) => {
             const day = index % 4;
             const startColumn = 1 + layouts.slice(0, day).reduce((sum, layout) => sum + layout.count, 0);
             const endColumn = startColumn + layouts[day].count;
-            const row = 31 + Math.floor(index / 4);
+            const row = legendStartRow + Math.floor(index / 4);
             for (let offset = startColumn; offset < endColumn; offset++) rows[row].values[offset] = cell(offset === startColumn ? activity.name : '', activity.color, 'activity');
             if (endColumn - startColumn > 1) merges.push({ sheetId: 0, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: startColumn, endColumnIndex: endColumn });
         });
@@ -221,6 +228,7 @@
         };
         const sheet = sheetsFor(model)[0];
         const dimensions = dimensionsFor(model);
+        const legendTitleRow = 5 + SLOTS_PER_DAY;
         const sheetData = worksheet.getElementsByTagName('sheetData')[0];
         const originalRows = [...sheetData.children];
         const output = element(worksheet, 'sheetData');
@@ -232,7 +240,7 @@
             rowData.values.forEach((cell, column) => {
                 const text = cell.userEnteredValue.stringValue;
                 const borderless = !cell.userEnteredFormat.backgroundColor;
-                if (!text && borderless && ![0, 1, 29].includes(rowIndex)) return;
+                if (!text && borderless && ![0, 1, legendTitleRow].includes(rowIndex)) return;
                 const node = element(worksheet, 'c', { r: `${columnName(column)}${rowIndex + 1}`, s: text || !borderless ? styleFor(cell) : 16 });
                 if (text) {
                     node.setAttribute('t', 's');
@@ -255,10 +263,6 @@
             const start = `${columnName(merge.startColumnIndex)}${merge.startRowIndex + 1}`;
             const end = `${columnName(merge.endColumnIndex - 1)}${merge.endRowIndex}`;
             return start === end ? start : `${start}:${end}`;
-        });
-        dimensions.layouts.forEach((layout, day) => {
-            const firstColumn = 1 + dimensions.layouts.slice(0, day).reduce((sum, item) => sum + item.count, 0);
-            layout.events.filter(event => event.end - event.start === 30).forEach(event => ranges.push(`${columnName(firstColumn + event.lane)}${5 + (event.start - 480) / 30}`));
         });
         const merges = element(worksheet, 'mergeCells', { count: ranges.length });
         ranges.forEach(ref => merges.append(element(worksheet, 'mergeCell', { ref })));
@@ -492,15 +496,15 @@
         document.getElementById('gantt-week').value = model.week;
         document.getElementById('gantt-range').textContent = `${shortDate(model.week)}–${shortDate(shift(model.week, 4))}`;
         document.getElementById('gantt-days').innerHTML = DAYS.map((day, index) => `<button type="button" data-day="${index}" class="${state.day === index ? 'is-active' : ''}" aria-pressed="${state.day === index}">${day}</button>`).join('');
-        const hours = Array.from({ length: 24 }, (_, slot) => `<div class="gantt-time">${time(480 + slot * 30)}</div>`).join('');
+            const hours = Array.from({ length: SLOTS_PER_DAY }, (_, slot) => `<div class="gantt-time${slot % 2 === 0 ? ' is-half-hour' : ' is-quarter'}">${time(DAY_START + slot * SLOT_MINUTES)}</div>`).join('');
         const layouts = DAYS.map((day, index) => lanes(model.events.filter(event => event.day === index)));
         const columns = DAYS.map((day, index) => {
             const layout = layouts[index];
-            const slots = Array.from({ length: 24 }, (_, slot) => `<button class="gantt-slot" type="button" data-slot="${slot}" data-day="${index}" aria-label="הוסף פעילות ביום ${day} בשעה ${time(480 + slot * 30)}"></button>`).join('');
+            const slots = Array.from({ length: SLOTS_PER_DAY }, (_, slot) => `<button class="gantt-slot${slot % 2 === 0 ? ' is-half-hour' : ''}" type="button" data-slot="${slot}" data-day="${index}" aria-label="הוסף פעילות ביום ${day} בשעה ${time(DAY_START + slot * SLOT_MINUTES)}"></button>`).join('');
             const events = layout.events.map(event => {
                 const activity = model.activities.find(item => item.id === event.activity);
                 const description = [activity.name, event.place, `${time(event.start)}–${time(event.end)}`, event.text].filter(Boolean).join(' | ');
-                return `<div class="gantt-event${event.end - event.start === 30 ? ' is-compact' : ''}" style="--event-color:${activity.color};top:${(event.start - 480) / 30 * 48}px;height:${(event.end - event.start) / 30 * 48}px;inset-inline-start:${event.lane / layout.count * 100}%;width:${100 / layout.count}%" data-event="${html(event.id)}"><button class="gantt-event-edit" type="button" data-edit="${html(event.id)}" title="${html(description)}" aria-label="${html(description)}"><strong>${html(event.place || activity.name)}</strong><span class="gantt-event-time" dir="ltr">${time(event.start)}–${time(event.end)}</span><span class="gantt-event-detail">${html(event.place ? activity.name : event.text)}</span></button><button class="gantt-resize gantt-resize-start" type="button" title="שינוי שעת התחלה" aria-label="שינוי שעת התחלה" data-resize="start" data-event-id="${html(event.id)}"></button><button class="gantt-resize gantt-resize-end" type="button" title="שינוי שעת סיום" aria-label="שינוי שעת סיום" data-resize="end" data-event-id="${html(event.id)}"></button><button class="gantt-move" type="button" title="הזזת פעילות" aria-label="הזזת פעילות" data-move="${html(event.id)}">${icon('grip-vertical')}</button></div>`;
+                return `<div class="gantt-event${event.end - event.start <= SLOT_MINUTES ? ' is-compact' : ''}" style="--event-color:${activity.color};top:${(event.start - DAY_START) / SLOT_MINUTES * SLOT_PIXELS}px;height:${(event.end - event.start) / SLOT_MINUTES * SLOT_PIXELS}px;inset-inline-start:${event.lane / layout.count * 100}%;width:${100 / layout.count}%" data-event="${html(event.id)}"><button class="gantt-event-edit" type="button" data-edit="${html(event.id)}" title="${html(description)}" aria-label="${html(description)}"><strong>${html(event.place || activity.name)}</strong><span class="gantt-event-time" dir="ltr">${time(event.start)}–${time(event.end)}</span><span class="gantt-event-detail">${html(event.place ? activity.name : event.text)}</span></button><button class="gantt-resize gantt-resize-start" type="button" title="שינוי שעת התחלה" aria-label="שינוי שעת התחלה" data-resize="start" data-event-id="${html(event.id)}"></button><button class="gantt-resize gantt-resize-end" type="button" title="שינוי שעת סיום" aria-label="שינוי שעת סיום" data-resize="end" data-event-id="${html(event.id)}"></button><button class="gantt-move" type="button" title="הזזת פעילות" aria-label="הזזת פעילות" data-move="${html(event.id)}">${icon('grip-vertical')}</button></div>`;
             }).join('');
             return `<div class="gantt-day ${index === state.day ? 'is-selected' : ''}"><div class="gantt-day-head"><strong>${day}</strong><span>${shortDate(shift(model.week, index))}</span></div><div class="gantt-day-body" data-column="${index}">${slots}${events}</div></div>`;
         }).join('');
@@ -614,7 +618,7 @@
     function setup() {
         const section = document.getElementById('view-gantt');
         section.innerHTML = `<div class="gantt-toolbar"><div><h2>גאנט למדריכה</h2><div id="gantt-range" class="muted-note"></div></div><div class="gantt-actions"><button id="gantt-drive" class="btn-secondary" type="button" title="פתיחה בדרייב" aria-label="פתיחה בדרייב">${icon('external-link')} פתיחה בדרייב</button><button id="gantt-download" class="btn-secondary" type="button" title="הורדת אקסל" aria-label="הורדת אקסל">${icon('download')} הורדה</button></div></div><div class="gantt-weekbar"><button id="gantt-prev" class="icon-btn" title="השבוע הקודם" aria-label="השבוע הקודם">${icon('chevron-right')}</button><label class="field"><span>שבוע שמתחיל ביום ראשון</span><input id="gantt-week" type="date"></label><button id="gantt-next" class="icon-btn" title="השבוע הבא" aria-label="השבוע הבא">${icon('chevron-left')}</button><button id="gantt-today" class="btn-secondary" type="button">השבוע</button></div><div class="gantt-controls"><button id="gantt-add" class="btn" type="button">${icon('plus')} פעילות</button><button id="gantt-copy" class="btn-secondary" type="button">${icon('copy')} העתק משבוע קודם</button><span id="gantt-status" role="status" aria-live="polite">בחר שבוע</span><button id="gantt-retry" class="btn-secondary" type="button" hidden>${icon('cloud-upload')} שמור שוב</button></div><div id="gantt-days" class="gantt-days" aria-label="יום לתצוגה"></div><div id="gantt-board" class="gantt-board"></div><h3 class="gantt-legend-title">מקרא פעילויות</h3><div id="gantt-legend" class="gantt-legend"></div>`;
-        document.body.insertAdjacentHTML('beforeend', `<dialog id="gantt-editor" class="gantt-dialog" dir="rtl"><form id="gantt-form"><div class="sheet-head"><h3 id="gantt-editor-title">פעילות חדשה</h3><button class="icon-btn" type="button" data-close="gantt-editor" title="סגירה" aria-label="סגירה">${icon('x')}</button></div><div class="field-row"><label class="field"><span>יום</span><select name="day"></select></label><label class="field"><span>סוג פעילות</span><select name="activity"></select></label></div><div class="field-row"><label class="field"><span>התחלה</span><input name="start" type="time" min="08:00" max="19:30" step="1800" required></label><label class="field"><span>סיום</span><input name="end" type="time" min="08:30" max="20:00" step="1800" required></label></div><label class="field"><span>גן / מקום</span><input name="place" list="gantt-gardens" maxlength="200"><datalist id="gantt-gardens"></datalist></label><label class="field gantt-text"><span>תוכן הפעילות</span><textarea name="text" maxlength="2000"></textarea></label><div class="gantt-dialog-actions"><button id="gantt-delete" class="btn-danger" type="button">מחק</button><button class="btn" type="submit">שמור</button></div></form></dialog><dialog id="gantt-type-editor" class="gantt-dialog" dir="rtl"><form id="gantt-type-form"><div class="sheet-head"><h3>סוג פעילות</h3><button class="icon-btn" type="button" data-close="gantt-type-editor" title="סגירה" aria-label="סגירה">${icon('x')}</button></div><label class="field"><span>שם</span><input name="name" maxlength="150" required></label><label class="field gantt-color"><span>צבע</span><input name="color" type="color" required></label><div class="gantt-dialog-actions"><button class="btn" type="submit">שמור</button></div></form></dialog>`);
+        document.body.insertAdjacentHTML('beforeend', `<dialog id="gantt-editor" class="gantt-dialog" dir="rtl"><form id="gantt-form"><div class="sheet-head"><h3 id="gantt-editor-title">פעילות חדשה</h3><button class="icon-btn" type="button" data-close="gantt-editor" title="סגירה" aria-label="סגירה">${icon('x')}</button></div><div class="field-row"><label class="field"><span>יום</span><select name="day"></select></label><label class="field"><span>סוג פעילות</span><select name="activity"></select></label></div><div class="field-row"><label class="field"><span>התחלה</span><input name="start" type="time" min="08:00" max="19:45" step="900" required></label><label class="field"><span>סיום</span><input name="end" type="time" min="08:15" max="20:00" step="900" required></label></div><label class="field"><span>גן / מקום</span><input name="place" list="gantt-gardens" maxlength="200"><datalist id="gantt-gardens"></datalist></label><label class="field gantt-text"><span>תוכן הפעילות</span><textarea name="text" maxlength="2000"></textarea></label><div class="gantt-dialog-actions"><button id="gantt-delete" class="btn-danger" type="button">מחק</button><button class="btn" type="submit">שמור</button></div></form></dialog><dialog id="gantt-type-editor" class="gantt-dialog" dir="rtl"><form id="gantt-type-form"><div class="sheet-head"><h3>סוג פעילות</h3><button class="icon-btn" type="button" data-close="gantt-type-editor" title="סגירה" aria-label="סגירה">${icon('x')}</button></div><label class="field"><span>שם</span><input name="name" maxlength="150" required></label><label class="field gantt-color"><span>צבע</span><input name="color" type="color" required></label><div class="gantt-dialog-actions"><button class="btn" type="submit">שמור</button></div></form></dialog>`);
         const eventForm = document.getElementById('gantt-form');
         const originalPlaceField = eventForm.elements.place.closest('.field');
         originalPlaceField.id = 'gantt-place-field';
@@ -652,7 +656,7 @@
             const button = event.target.closest('button');
             if (!button || button.disabled || state.busy || !state.model) return;
             if (button.dataset.edit) editEvent(button.dataset.edit);
-            else if (button.dataset.slot !== undefined) editEvent(null, Number(button.dataset.day), 480 + Number(button.dataset.slot) * 30);
+            else if (button.dataset.slot !== undefined) editEvent(null, Number(button.dataset.day), DAY_START + Number(button.dataset.slot) * SLOT_MINUTES);
             else if (button.closest('#gantt-days')) { state.day = Number(button.dataset.day); render(); }
             else if (button.dataset.type) editType(button.dataset.type);
             else if (button.id === 'gantt-new-type') editType();
@@ -662,7 +666,7 @@
             event.preventDefault();
             const form = event.currentTarget;
             const start = minutes(form.elements.start.value), end = minutes(form.elements.end.value);
-            if (start >= end || start < 480 || end > 1200 || start % 30 || end % 30) { showToast('בחר שעות בחצאי שעה בין 08:00 ל־20:00, עם סיום אחרי ההתחלה.', true); return; }
+            if (start >= end || start < DAY_START || end > DAY_END || start % SLOT_MINUTES || end % SLOT_MINUTES) { showToast('בחר שעות ברבעי שעה בין 08:00 ל־20:00, עם סיום אחרי ההתחלה.', true); return; }
             const activity = form.elements.activity.value;
             let place = form.elements.place.value.trim();
             if (activity === 'type-0') {
@@ -716,16 +720,16 @@
                 dragging.element.classList.add('is-dragging');
                 return;
             }
-            const delta = Math.round((event.clientY - dragging.y) / 48) * 30;
+            const delta = Math.round((event.clientY - dragging.y) / SLOT_PIXELS) * SLOT_MINUTES;
             const start = dragging.edge === 'start'
-                ? Math.max(480, Math.min(dragging.event.end - 30, dragging.event.start + delta))
+                ? Math.max(DAY_START, Math.min(dragging.event.end - SLOT_MINUTES, dragging.event.start + delta))
                 : dragging.event.start;
             const end = dragging.edge === 'end'
-                ? Math.min(1200, Math.max(dragging.event.start + 30, dragging.event.end + delta))
+                ? Math.min(DAY_END, Math.max(dragging.event.start + SLOT_MINUTES, dragging.event.end + delta))
                 : dragging.event.end;
             dragging.preview = { start, end };
-            dragging.element.style.top = `${(start - 480) / 30 * 48}px`;
-            dragging.element.style.height = `${(end - start) / 30 * 48}px`;
+            dragging.element.style.top = `${(start - DAY_START) / SLOT_MINUTES * SLOT_PIXELS}px`;
+            dragging.element.style.height = `${(end - start) / SLOT_MINUTES * SLOT_PIXELS}px`;
             dragging.element.classList.add('is-resizing');
             dragging.element.querySelector('.gantt-event-time').textContent = `${time(start)}–${time(end)}`;
         });
@@ -754,7 +758,7 @@
             const target = [...document.querySelectorAll('[data-column]')].find(column => { const rect = column.getBoundingClientRect(); return rect.width && event.clientX >= rect.left && event.clientX <= rect.right; });
             if (!target || Math.abs(event.clientY - current.y) + Math.abs(event.clientX - current.x) < 8) return;
             const duration = current.event.end - current.event.start;
-            const start = Math.max(480, Math.min(1200 - duration, current.event.start + Math.round((event.clientY - current.y) / 48) * 30));
+            const start = Math.max(DAY_START, Math.min(DAY_END - duration, current.event.start + Math.round((event.clientY - current.y) / SLOT_PIXELS) * SLOT_MINUTES));
             mutate(model => { const moved = model.events.find(item => item.id === current.event.id); Object.assign(moved, { day: Number(target.dataset.column), start, end: start + duration }); });
         };
         section.addEventListener('pointerup', drop);
