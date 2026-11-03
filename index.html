@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>יומן ליווי גנים - Google Sheets Sync</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="stylesheet" href="gantt.css">
@@ -181,6 +181,11 @@
             .save-bar { position: sticky; bottom: calc(var(--nav-height) + 6px); padding: 8px 0; background: linear-gradient(to top, var(--bg) 62%, rgba(244,247,246,0)); }
             .save-bar .btn { flex: 1; min-width: 0; }
             .entry-actions { gap: 5px; }
+        }
+        @supports (height: 100dvh) {
+            @media (max-width: 720px) {
+                .app-nav { bottom: max(0px, calc(100vh - 100dvh)); }
+            }
         }
     </style>
 </head>
